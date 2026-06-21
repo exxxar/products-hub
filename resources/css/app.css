@@ -1,0 +1,51 @@
+/*
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+*/
+
+.notification-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+    max-width: 400px;
+}
+
+.notification-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification-toast.info {
+    background: #e7f1ff;
+    color: #084298;
+    border-left: 4px solid #0d6efd;
+}
+
+.notification-toast.success {
+    background: #d1e7dd;
+    color: #0f5132;
+    border-left: 4px solid #198754;
+}
+
+.notification-toast.error {
+    background: #f8d7da;
+    color: #842029;
+    border-left: 4px solid #dc3545;
+}
+
+.notification-toast i {
+    font-size: 18px;
+    flex-shrink: 0;
+}
