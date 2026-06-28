@@ -12,6 +12,7 @@
             @open-webhook="openWebhook"
             @export-vk="exportToVk"
             @toggle-sidebar="needSidebar = $event"
+            @open-menu-generator="openMenuGenerator"
         />
 
         <!-- Модалка авторизации -->
@@ -139,6 +140,7 @@
             ref="productModal"
             :categories="store.categories"
             :product="store.editingProduct"
+            @create-category="fastCreateNewCategory"
             @save="saveProduct"
             @delete="deleteProduct"
         />
@@ -173,6 +175,8 @@
             :category="store.editingCategory"
             @save="saveCategory"
         />
+
+        <MenuConfiguratorModal ref="menuGeneratorModal" />
 
         <!-- PWA установка -->
         <div class="modal fade" id="installPwaModal" tabindex="-1" aria-hidden="true">
@@ -215,6 +219,8 @@ import {useWorkspaceStore} from '@/store/workspace.js'
 import CategoryModal from '../components/categories/CategoryModal.vue'
 import CategoryPresetsModal from '../components/categories/CategoryPresetsModal.vue'
 import NotifyContainer from "@/notify/NotifyContainer.vue";
+import MenuConfiguratorModal from '../components/Menu/MenuConfiguratorModal.vue'
+
 
 export default {
     name: 'Workspace',
@@ -222,6 +228,7 @@ export default {
     components: {
         NotifyContainer,
         TopMenu,
+        MenuConfiguratorModal,
         CategoryPresetsModal,
         ProductGrid,
         ProductTable,
@@ -289,6 +296,11 @@ export default {
         this.handleVKCallback()
     },
     methods: {
+        openMenuGenerator() {
+            if (this.$refs.menuGeneratorModal) {
+                this.$refs.menuGeneratorModal.show()
+            }
+        },
         openCategoryPresets() {
             if (this.$refs.categoryPresetsModal) {
                 this.$refs.categoryPresetsModal.show()
@@ -357,6 +369,7 @@ export default {
             this.store.setAccessToken(this.item.access_token)
             this.store.setSettings(this.item.settings)
             this.store.setProducts(this.item.products || [])
+
             this.store.setCollections(this.item.collections || [])
             this.store.setCategories(this.item.categories || [])
             this.store.setWebhooks(this.item.webhooks || [])
@@ -486,6 +499,11 @@ export default {
             }
         },
 
+        async fastCreateNewCategory(name){
+            await this.saveCategory({
+                name: name
+            })
+        },
         async saveCategory(categoryData, id) {
             try {
                 await this.store.saveCategory(categoryData, id)

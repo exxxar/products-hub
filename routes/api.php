@@ -1,6 +1,9 @@
 <?php
 
+
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\MenuDefaultImageController;
+use App\Http\Controllers\MenuGeneratorController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WebhookController;
 
@@ -100,6 +103,22 @@ Route::prefix('workspaces/{uuid}')
             Route::post('/initialize', [WorkspaceTokenController::class, 'initialize']);
         });
 
+        // Menu Generator
+        Route::prefix('menu')->group(function () {
+
+
+            Route::get('/default-images', [MenuDefaultImageController::class, 'index']);
+            Route::post('/default-images', [MenuDefaultImageController::class, 'store']);
+            Route::delete('/default-images/{image}', [MenuDefaultImageController::class, 'destroy']);
+
+            Route::get('/config', [MenuGeneratorController::class, 'getConfig']);
+            Route::post('/config', [MenuGeneratorController::class, 'saveConfig']);
+            Route::post('/logo', [MenuGeneratorController::class, 'uploadLogo']);
+            Route::post('/background-image', [MenuGeneratorController::class, 'uploadBackgroundImage']);
+            Route::delete('/background-image', [MenuGeneratorController::class, 'removeBackgroundImage']);
+            Route::get('/preview', [MenuGeneratorController::class, 'preview']);
+            Route::get('/generate', [MenuGeneratorController::class, 'generatePdf']);
+        });
         // Категории
         Route::prefix('categories')->group(function () {
             // === Categories ===

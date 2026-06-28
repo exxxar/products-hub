@@ -16,6 +16,17 @@ class Workspace extends Model
     ];
 
 
+    public function menuConfig()
+    {
+        return $this->hasOne(MenuConfig::class);
+    }
+
+    // В Workspace.php добавить:
+    public function menuDefaultImages()
+    {
+        return $this->hasMany(MenuDefaultImage::class);
+    }
+
     public function webhooks()
     {
         return $this->hasMany(Webhook::class);

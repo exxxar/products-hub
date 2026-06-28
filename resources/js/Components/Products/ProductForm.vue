@@ -553,6 +553,9 @@ export default {
         }
     },
 
+    mounted() {
+        this.updateTabCounts()
+    },
     methods: {
         // === Заполнение тестовыми данными ===
         fillWithTestData() {

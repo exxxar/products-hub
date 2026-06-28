@@ -149,9 +149,8 @@ export default {
 
         show() {
             this.isLoading = true
-            this.prepareForm()
-
             this.$nextTick(() => {
+                this.prepareForm()
                 this.isLoading = false
                 if (this.modal) {
                     this.modal.show()

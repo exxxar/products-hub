@@ -8,6 +8,8 @@ import collections from './modules/collections'
 import webhooks from './modules/webhooks'
 import ingredients from './modules/ingredients'
 import importExport from './modules/importExport'
+import menu from './modules/menu'
+
 
 /**
  * Объединяет модули в единую структуру store
@@ -51,6 +53,7 @@ const merged = mergeModules(
     collections,
     webhooks,
     ingredients,
+    menu,
     importExport
 )
 

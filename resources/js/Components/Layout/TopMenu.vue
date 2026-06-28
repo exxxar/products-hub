@@ -125,6 +125,14 @@
                         >
                             <i class="fa-solid fa-arrows-rotate" :class="{ 'rotating': isSyncing }"></i>
                         </button>
+
+                        <button
+                            class="tool-btn"
+                            @click="$emit('open-menu-generator')"
+                            title="Генератор PDF-меню"
+                        >
+                            <i class="fa-solid fa-file-pdf"></i>
+                        </button>
                     </div>
                 </div>
 

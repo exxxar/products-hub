@@ -31,10 +31,12 @@
         <img
             @click="$emit('edit')"
             v-if="product.images[0]"
-            v-lazy="product.images[0]"
+            v-lazy="product.images[0].url"
             class="card-img-top"
             style="object-fit: cover; height: 120px;"
         >
+
+
 
 <!--        <template v-if="product.images.length===0">
 
@@ -103,6 +105,7 @@ export default {
         selected: Boolean
     },
     mounted() {
+
     }
 }
 </script>
