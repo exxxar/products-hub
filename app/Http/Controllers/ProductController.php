@@ -183,7 +183,7 @@ class ProductController extends Controller
         }
     }
 
-    public function update(Request $request, $productId)
+    public function update(Request $request, $workspaceUuid, $productId)
     {
         $workspace = App::make('workspace');
 
