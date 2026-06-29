@@ -22,7 +22,7 @@
 
                     <template v-else>
                         <!-- Режим: меню действий -->
-                        <template v-if="mode === 'menu'">
+                        <template v-if="currentMode === 'menu'">
                             <p class="modal-hint">
                                 Товары разблокированы. Выберите действие:
                             </p>
@@ -70,7 +70,7 @@
                         </template>
 
                         <!-- Режим: установка нового кода -->
-                        <template v-else-if="mode === 'set'">
+                        <template v-else-if="currentMode === 'set'">
                             <p class="modal-hint">
                                 Придумайте мастер-код для защиты товаров от случайного удаления и редактирования.
                                 Минимум 4 символа.
@@ -106,7 +106,7 @@
                         </template>
 
                         <!-- Режим: верификация (разблокировка) -->
-                        <template v-else-if="mode === 'verify'">
+                        <template v-else-if="currentMode === 'verify'">
                             <p class="modal-hint">
                                 Введите мастер-код для разблокировки редактирования товаров.
                             </p>
@@ -132,7 +132,7 @@
                         </template>
 
                         <!-- Режим: смена кода -->
-                        <template v-else-if="mode === 'change'">
+                        <template v-else-if="currentMode === 'change'">
                             <p class="modal-hint">
                                 Введите текущий код и новый мастер-код.
                             </p>
@@ -179,7 +179,7 @@
                         </template>
 
                         <!-- Режим: сброс кода -->
-                        <template v-else-if="mode === 'reset'">
+                        <template v-else-if="currentMode === 'reset'">
                             <div class="danger-warning">
                                 <i class="fa-solid fa-triangle-exclamation"></i>
                                 <div>
@@ -210,7 +210,7 @@
                 <div class="modal-footer">
                     <!-- Кнопка "Назад" для режимов change/reset -->
                     <button
-                        v-if="mode === 'change' || mode === 'reset'"
+                        v-if="currentMode === 'change' || currentMode === 'reset'"
                         type="button"
                         class="btn-back"
                         @click="switchMode('menu')"
@@ -220,7 +220,7 @@
                     </button>
 
                     <button
-                        v-if="mode !== 'menu'"
+                        v-if="currentMode !== 'menu'"
                         type="button"
                         class="btn-cancel"
                         @click="hide"
@@ -229,10 +229,10 @@
                     </button>
 
                     <button
-                        v-if="!isLocked && mode !== 'menu'"
+                        v-if="!isLocked && currentMode !== 'menu'"
                         type="button"
                         class="btn-primary-action"
-                        :class="{ 'btn-danger': mode === 'reset' }"
+                        :class="{ 'btn-danger': currentMode === 'reset' }"
                         @click="handleSubmit"
                         :disabled="isSubmitting || !canSubmit"
                     >
@@ -255,17 +255,17 @@ export default {
 
     emits: ['success', 'locked', 'lock-session'],
 
-    props: {
-        mode: {
-            type: String,
-            default: 'verify', // set, verify, change, reset, menu
-        }
-    },
+    // ❌ Убираем prop currentMode
+    // props: { currentMode: { ... } },
 
     data() {
         return {
             store: useWorkspaceStore(),
             modal: null,
+
+            // ✅ Локальное состояние вместо prop
+            currentMode: 'verify',
+
             code: '',
             newCode: '',
             confirmCode: '',
@@ -288,7 +288,7 @@ export default {
                 change: 'Смена мастер-кода',
                 reset: 'Удаление мастер-кода',
             }
-            return titles[this.mode] || 'Мастер-код'
+            return titles[this.currentMode] || 'Мастер-код'
         },
 
         modalIcon() {
@@ -299,7 +299,7 @@ export default {
                 change: 'fa-key',
                 reset: 'fa-unlock',
             }
-            return icons[this.mode] || 'fa-lock'
+            return icons[this.currentMode] || 'fa-lock'
         },
 
         submitLabel() {
@@ -309,7 +309,7 @@ export default {
                 change: 'Сменить код',
                 reset: 'Удалить код',
             }
-            return labels[this.mode] || 'Подтвердить'
+            return labels[this.currentMode] || 'Подтвердить'
         },
 
         submitIcon() {
@@ -319,11 +319,11 @@ export default {
                 change: 'fa-key',
                 reset: 'fa-trash',
             }
-            return icons[this.mode] || 'fa-check'
+            return icons[this.currentMode] || 'fa-check'
         },
 
         canSubmit() {
-            switch (this.mode) {
+            switch (this.currentMode) {
                 case 'set':
                     return this.newCode.length >= 4 && this.newCode === this.confirmCode
                 case 'verify':
@@ -339,7 +339,7 @@ export default {
         },
 
         isLocked() {
-            return this.store.isMasterRateLimited
+            return this.store.masterStatus?.is_locked || false
         },
 
         attemptsLeft() {
@@ -360,25 +360,31 @@ export default {
         },
 
         confirmCode(val) {
-            if (val && val !== this.newCode) {
-                this.confirmError = 'Коды не совпадают'
-            } else {
-                this.confirmError = ''
-            }
+            this.confirmError = (val && val !== this.newCode) ? 'Коды не совпадают' : ''
         },
 
         confirmNewCode(val) {
-            if (val && val !== this.newCode) {
-                this.confirmError = 'Коды не совпадают'
-            } else {
-                this.confirmError = ''
-            }
+            this.confirmError = (val && val !== this.newCode) ? 'Коды не совпадают' : ''
         },
     },
 
     methods: {
-        show() {
+        // ✅ Публичный метод для установки режима из родителя
+        setMode(currentMode) {
+            const validModes = ['menu', 'set', 'verify', 'change', 'reset']
+            if (!validModes.includes(currentMode)) {
+                console.warn(`Invalid currentMode: ${currentMode}`)
+                return
+            }
+            this.currentMode = currentMode
             this.resetForm()
+        },
+
+        // ✅ Публичный метод для показа модалки с нужным режимом
+        show(currentMode = null) {
+            if (currentMode) {
+                this.setMode(currentMode)
+            }
             this.$nextTick(() => {
                 if (this.modal) {
                     this.modal.show()
@@ -403,9 +409,9 @@ export default {
             this.isSubmitting = false
         },
 
+        // ✅ Переключение режима — теперь работает с локальным состоянием
         switchMode(newMode) {
-            this.mode = newMode
-            this.resetForm()
+            this.setMode(newMode)
         },
 
         async lockSession() {
@@ -424,7 +430,7 @@ export default {
             try {
                 let result
 
-                switch (this.mode) {
+                switch (this.currentMode) {
                     case 'set':
                         result = await this.store.setMasterCode(this.newCode, this.confirmCode)
                         break
@@ -444,17 +450,25 @@ export default {
                 }
 
                 if (result?.success || result?.has_code === false) {
-                    this.$emit('success', { mode: this.mode })
+                    this.$emit('success', { mode: this.currentMode })
                     this.hide()
                 } else if (result?.locked) {
                     this.$emit('locked')
                     this.hide()
+                } else if (result?.error) {
+                    this.errorMessage = result.error
+
+                    if (result.error.includes('уже установлен')) {
+                        setTimeout(() => {
+                            this.switchMode('verify')
+                        }, 2000)
+                    }
                 } else {
                     this.errorMessage = result?.message || 'Неверный код'
                 }
             } catch (error) {
                 console.error('Master code action failed:', error)
-                this.errorMessage = 'Произошла ошибка'
+                this.errorMessage = 'Произошла ошибка при выполнении операции'
             } finally {
                 this.isSubmitting = false
             }
@@ -487,7 +501,6 @@ export default {
             if (diff <= 0) {
                 this.lockTimeLeft = ''
                 this.stopLockTimer()
-                // Перезагружаем workspace чтобы обновить флаг
                 this.store.loadWorkspace()
                 return
             }

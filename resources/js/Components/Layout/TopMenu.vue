@@ -295,9 +295,9 @@
     <!-- Модалка мастер-кода -->
     <MasterCodeModal
         ref="masterModal"
-        :mode="masterModalMode"
         @success="onMasterSuccess"
         @locked="onMasterLocked"
+        @lock-session="onLockSession"
     />
 </template>
 
@@ -425,7 +425,19 @@ export default {
                 this.$emit('export-vk')
             }
         },
+        handleMasterClick() {
+            if (!this.hasMasterCode) {
+                this.$refs.masterModal.show('set')
+                return
+            }
 
+            if (this.isMasterLocked) {
+                this.$refs.masterModal.show('verify')
+                return
+            }
+
+            this.$refs.masterModal.show('menu')
+        },
         async syncAllWebhooks() {
             this.isSyncing = true
             try {
@@ -553,22 +565,7 @@ export default {
             this.store.selectedIds = []
         },
 
-        handleMasterClick() {
-            if (!this.hasMasterCode) {
-                this.masterModalMode = 'set'
-                this.$refs.masterModal.show()
-                return
-            }
 
-            if (this.isMasterLocked) {
-                this.masterModalMode = 'verify'
-                this.$refs.masterModal.show()
-                return
-            }
-
-            this.masterModalMode = 'menu'
-            this.$refs.masterModal.show()
-        },
 
         onMasterSuccess({ mode }) {
             const messages = {
