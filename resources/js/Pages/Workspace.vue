@@ -63,7 +63,6 @@
                 <template v-else-if="viewMode === 'categories'">
                     <div class="categories-view">
                         <h5 class="categories-title">Группировка по категориям</h5>
-11
                         <template v-if="selectedCategory">
                             <div class="category-header-with-back">
                                 <button
