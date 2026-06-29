@@ -14,7 +14,7 @@ import NotifyPlugin from './notify/index.js'
 
 import VueLazyLoad from 'vue3-lazyload'
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'Агрегатор товаров';
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
