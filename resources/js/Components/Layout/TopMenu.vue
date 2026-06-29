@@ -299,19 +299,27 @@
         @locked="onMasterLocked"
         @lock-session="onLockSession"
     />
+
+    <!-- ✅ Модалка результатов синхронизации -->
+    <SyncResultModal
+        ref="syncResultModal"
+        @retry="retryFailedWebhooks"
+    />
 </template>
 
 <script>
 import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'
 import { useWorkspaceStore } from '@/store/workspace.js'
 import MasterCodeModal from '@/Components/Auth/MasterCodeModal.vue'
+import SyncResultModal from '@/Components/Layout/SyncResultModal.vue' // ✅ Добавляем
 
 export default {
     name: 'TopMenu',
 
     components: {
         ConfirmModal,
-        MasterCodeModal
+        MasterCodeModal,
+        SyncResultModal
     },
 
     props: {
@@ -439,15 +447,54 @@ export default {
             this.$refs.masterModal.show('menu')
         },
         async syncAllWebhooks() {
-            this.isSyncing = true
+            const startTime = Date.now()
+
+            // Показываем модалку с состоянием загрузки
+            this.$refs.syncResultModal.setLoading()
+            this.$refs.syncResultModal.show()
+
             try {
-                await axios.post(`/api/workspaces/${this.store.uuid}/webhooks/sync-all`)
+                const response = await axios.post(`/api/workspaces/${this.store.uuid}/webhooks/sync-all`)
+
+                const executionTime = this.formatExecutionTime(Date.now() - startTime)
+
+                // Формируем результаты для отображения
+                const results = response.data.results.map(result => ({
+                    id: result.id,
+                    name: result.name,
+                    url: result.url,
+                    success: result.success,
+                    status: result.status,
+                    error: result.error || null,
+                }))
+
+                // Показываем результаты
+                this.$refs.syncResultModal.setResults(results, executionTime)
+
             } catch (error) {
                 console.error('Sync failed:', error)
-                this.$notify.error('Ошибка при синхронизации')
-            } finally {
-                this.isSyncing = false
+
+                // Показываем ошибку в модалке
+                this.$refs.syncResultModal.setResults([{
+                    id: 0,
+                    name: 'Ошибка синхронизации',
+                    url: '',
+                    success: false,
+                    status: 'ERROR',
+                    error: error.response?.data?.message || error.message || 'Неизвестная ошибка',
+                }], this.formatExecutionTime(Date.now() - startTime))
             }
+        },
+
+        retryFailedWebhooks() {
+            // Повторная синхронизация только для неудачных
+            this.syncAllWebhooks()
+        },
+
+        formatExecutionTime(ms) {
+            if (ms < 1000) return `${ms} мс`
+            const seconds = (ms / 1000).toFixed(2)
+            return `${seconds} сек`
         },
 
         // === СТОП-ЛИСТ ===

@@ -89,78 +89,46 @@ class WebhookController extends Controller
     public function syncAll(Request $request)
     {
         $workspace = App::make('workspace');
-
         $productId = $request->query('product_id');
-        $product = $productId ? $workspace->products()->with(['categories', 'attributes', 'ingredients'])->find($productId) : null;
+        $product = $productId ? $workspace->products()->find($productId) : null;
 
-        $webhooks = $workspace->webhooks;
         $results = [];
-        $totalSuccess = 0;
-        $totalFailed = 0;
+        $startTime = microtime(true);
 
-        Log::info('Starting webhook sync', [
-            'workspace' => $workspace->uuid,
-            'webhooks_count' => $webhooks->count(),
-            'product_id' => $productId
-        ]);
+        foreach ($workspace->webhooks as $webhook) {
+            $webhookStartTime = microtime(true);
 
-        foreach ($webhooks as $webhook) {
             try {
-                $startTime = microtime(true);
-
                 $success = $webhook->sync($product);
-
-                $responseTime = round((microtime(true) - $startTime) * 1000); // в мс
+                $executionTime = round((microtime(true) - $webhookStartTime) * 1000);
 
                 $results[] = [
                     'id' => $webhook->id,
                     'name' => $webhook->name,
                     'url' => $webhook->url,
                     'success' => $success,
-                    'response_time_ms' => $responseTime,
-                    'last_synced_at' => $webhook->fresh()->last_synced_at,
-                    'last_status' => $webhook->fresh()->last_status
+                    'status' => $success ? 200 : ($webhook->last_status ?? 'failed'),
+                    'execution_time' => $executionTime,
+                    'error' => null,
                 ];
-
-                if ($success) {
-                    $totalSuccess++;
-                } else {
-                    $totalFailed++;
-                }
-
             } catch (\Exception $e) {
-                Log::error('Webhook sync exception', [
-                    'webhook_id' => $webhook->id,
-                    'error' => $e->getMessage()
-                ]);
-
                 $results[] = [
                     'id' => $webhook->id,
                     'name' => $webhook->name,
                     'url' => $webhook->url,
                     'success' => false,
+                    'status' => 'ERROR',
                     'error' => $e->getMessage(),
-                    'last_synced_at' => $webhook->last_synced_at,
-                    'last_status' => 'failed'
                 ];
-
-                $totalFailed++;
             }
         }
 
-        Log::info('Webhook sync completed', [
-            'workspace' => $workspace->uuid,
-            'total' => count($results),
-            'success' => $totalSuccess,
-            'failed' => $totalFailed
-        ]);
-
         return response()->json([
             'success' => true,
+            'results' => $results,
             'total' => count($results),
-            'successful' => $totalSuccess,
-            'failed' => $totalFailed,
-            'results' => $results
+            'successful' => collect($results)->where('success', true)->count(),
+            'failed' => collect($results)->where('success', false)->count(),
         ]);
     }
 }
