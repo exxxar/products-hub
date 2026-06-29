@@ -9,6 +9,8 @@ class Category extends Model
 {
     protected $fillable = ['workspace_id', 'parent_id','name', 'sort_order'];
 
+    protected $appends = ['products_count'];
+
     public function workspace()
     {
         return $this->belongsTo(Workspace::class);
@@ -30,4 +32,24 @@ class Category extends Model
         return $this->belongsToMany(Product::class, 'product_categories')
             ->withTimestamps();
     }
+
+
+    public function getProductsCountAttribute(): int
+    {
+        if (array_key_exists('products_count', $this->attributes)) {
+            return (int) $this->attributes['products_count'];
+        }
+
+        return $this->products()->count();
+    }
+
+    /**
+     * ✅ Глобальный скоуп — всегда подгружает products_count
+     */
+/*    protected static function booted()
+    {
+        static::addGlobalScope('withProductsCount', function (Builder $builder) {
+            $builder->withCount('products');
+        });
+    }*/
 }

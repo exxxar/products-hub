@@ -9,7 +9,8 @@ import webhooks from './modules/webhooks'
 import ingredients from './modules/ingredients'
 import importExport from './modules/importExport'
 import menu from './modules/menu'
-
+import master from './modules/master'
+import activity from './modules/activity'
 
 /**
  * Объединяет модули в единую структуру store
@@ -54,6 +55,8 @@ const merged = mergeModules(
     webhooks,
     ingredients,
     menu,
+    master,
+    activity,
     importExport
 )
 

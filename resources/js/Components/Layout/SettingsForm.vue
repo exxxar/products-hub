@@ -65,6 +65,8 @@
             </div>
 
             <AccessLinkManager />
+
+
         </div>
 
         <!-- VK Tab -->
@@ -186,6 +188,15 @@
                 <i v-else class="fa-solid fa-check"></i>
                 <span>{{ isLoading ? 'Сохранение...' : 'Сохранить настройки' }}</span>
             </button>
+
+            <button
+                type="button"
+                class="tool-btn"
+                @click="$emit('open-activity-log')"
+                title="История действий"
+            >
+                <i class="fa-solid fa-clock-rotate-left"></i> Лог действий
+            </button>
         </div>
     </form>
 </template>
@@ -208,7 +219,7 @@ export default {
 
     },
 
-    emits: ['update:modelValue', 'save', 'test'],
+    emits: ['update:modelValue', 'save', 'test','open-activity-log'],
 
     data() {
         return {
@@ -721,5 +732,38 @@ export default {
         width: 100%;
         justify-content: center;
     }
+}
+
+/* === Кнопки инструментов === */
+.tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: #f1f3f5;
+    color: #495057;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.tool-btn:hover {
+    background: #e7f1ff;
+    color: #0d6efd;
+    border-color: #cfe2ff;
+}
+
+.tool-btn.accent {
+    background: #e7f1ff;
+    color: #0d6efd;
+    border-color: #cfe2ff;
+}
+
+.tool-btn .btn-label {
+    font-weight: 500;
+    font-size: 13px;
 }
 </style>

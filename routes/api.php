@@ -1,6 +1,7 @@
 <?php
 
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\MenuDefaultImageController;
 use App\Http\Controllers\MenuGeneratorController;
@@ -38,7 +39,7 @@ Route::prefix('workspaces/{uuid}')
 
         // Настройки
         Route::prefix('settings')->group(function () {
-            Route::post('/', [SettingsController::class, 'save']);
+            Route::post('/', [SettingsController::class, 'save'])->middleware('master.unlocked');
             Route::post('/webhook/test', [SettingsController::class, 'test']);
 
         });
@@ -64,16 +65,37 @@ Route::prefix('workspaces/{uuid}')
             Route::get('/vk', [WorkspaceController::class, 'exportVk']);
         });
 
+        // === Мастер-код ===
+        Route::prefix('master')->group(function () {
+
+            Route::post('/set', [\App\Http\Controllers\MasterCodeController::class, 'set']);
+            Route::post('/verify', [\App\Http\Controllers\MasterCodeController::class, 'verify']);
+            Route::post('/change', [\App\Http\Controllers\MasterCodeController::class, 'change']);
+            Route::post('/reset', [\App\Http\Controllers\MasterCodeController::class, 'reset']);
+        });
+
+
+        Route::prefix('activity-logs')->group(function () {
+            // Activity Logs
+            Route::get('/', [ActivityLogController::class, 'index']);
+            Route::get('/stats', [ActivityLogController::class, 'stats']);
+            Route::delete('/', [ActivityLogController::class, 'clear'])->middleware('master.unlocked');
+        });
+
 
         // Товары
         Route::prefix('products')->group(function () {
             // Products
             Route::get('/', [ProductController::class, 'index']);
-            Route::post('/', [ProductController::class, 'store']);
-            Route::delete('/bulk', [ProductController::class, 'destroyMultiple']);
+            Route::post('/', [ProductController::class, 'store'])->middleware('master.unlocked');
+
+            // В api.php добавить:
+            Route::post('/add-to-stop-list', [ProductController::class, 'addToStopList'])->middleware('master.unlocked');
+            Route::post('/remove-from-stop-list', [ProductController::class, 'removeFromStopList'])->middleware('master.unlocked');
+            Route::delete('/bulk', [ProductController::class, 'destroyMultiple'])->middleware('master.unlocked');
             Route::get('/{product}', [ProductController::class, 'show']);
-            Route::put('/{product}', [ProductController::class, 'update']);
-            Route::delete('/{product}', [ProductController::class, 'destroy']);
+            Route::put('/{product}', [ProductController::class, 'update'])->middleware('master.unlocked');
+            Route::delete('/{product}', [ProductController::class, 'destroy'])->middleware('master.unlocked');
         });
 
         // Category presets
@@ -86,14 +108,14 @@ Route::prefix('workspaces/{uuid}')
 
         Route::prefix('collections')->group(function () {
             Route::get('/', [CollectionController::class, 'index']);
-            Route::post('/', [CollectionController::class, 'store']);
+            Route::post('/', [CollectionController::class, 'store'])->middleware('master.unlocked');
             Route::get('/{collection}', [CollectionController::class, 'show']);
-            Route::put('/{collection}', [CollectionController::class, 'update']);
-            Route::delete('/{collection}', [CollectionController::class, 'destroy']);
+            Route::put('/{collection}', [CollectionController::class, 'update'])->middleware('master.unlocked');
+            Route::delete('/{collection}', [CollectionController::class, 'destroy'])->middleware('master.unlocked');
 
-            Route::post('/{collection}/products', [CollectionController::class, 'addProducts']);
-            Route::delete('/{collection}/products', [CollectionController::class, 'removeProducts']);
-            Route::put('/{collection}/reorder', [CollectionController::class, 'reorderProducts']);
+            Route::post('/{collection}/products', [CollectionController::class, 'addProducts'])->middleware('master.unlocked');
+            Route::delete('/{collection}/products', [CollectionController::class, 'removeProducts'])->middleware('master.unlocked');
+            Route::put('/{collection}/reorder', [CollectionController::class, 'reorderProducts'])->middleware('master.unlocked');
         });
 
         Route::prefix('token')->group(function () {
@@ -112,10 +134,10 @@ Route::prefix('workspaces/{uuid}')
             Route::delete('/default-images/{image}', [MenuDefaultImageController::class, 'destroy']);
 
             Route::get('/config', [MenuGeneratorController::class, 'getConfig']);
-            Route::post('/config', [MenuGeneratorController::class, 'saveConfig']);
-            Route::post('/logo', [MenuGeneratorController::class, 'uploadLogo']);
-            Route::post('/background-image', [MenuGeneratorController::class, 'uploadBackgroundImage']);
-            Route::delete('/background-image', [MenuGeneratorController::class, 'removeBackgroundImage']);
+            Route::post('/config', [MenuGeneratorController::class, 'saveConfig'])->middleware('master.unlocked');
+            Route::post('/logo', [MenuGeneratorController::class, 'uploadLogo'])->middleware('master.unlocked');
+            Route::post('/background-image', [MenuGeneratorController::class, 'uploadBackgroundImage'])->middleware('master.unlocked');
+            Route::delete('/background-image', [MenuGeneratorController::class, 'removeBackgroundImage'])->middleware('master.unlocked');
             Route::get('/preview', [MenuGeneratorController::class, 'preview']);
             Route::get('/generate', [MenuGeneratorController::class, 'generatePdf']);
         });
@@ -123,33 +145,33 @@ Route::prefix('workspaces/{uuid}')
         Route::prefix('categories')->group(function () {
             // === Categories ===
             Route::get('/', [CategoryController::class, 'index']);
-            Route::post('/', [CategoryController::class, 'store']);
+            Route::post('/', [CategoryController::class, 'store'])->middleware('master.unlocked');
             // НОВОЕ: Товары категории
             Route::get('/{category_id}/products', [CategoryController::class, 'products']);
             Route::get('/{category_id}', [CategoryController::class, 'show']);
-            Route::put('/{category_id}', [CategoryController::class, 'update']);
-            Route::delete('/{category_id}', [CategoryController::class, 'destroy']);
+            Route::put('/{category_id}', [CategoryController::class, 'update'])->middleware('master.unlocked');
+            Route::delete('/{category_id}', [CategoryController::class, 'destroy'])->middleware('master.unlocked');
         });
 
         // Подборки
         Route::prefix('collections')->group(function () {
-            Route::post('/', [CollectionController::class, 'store']);
+            Route::post('/', [CollectionController::class, 'store'])->middleware('master.unlocked');
         });
 
         // Ингредиенты (если нужны отдельные CRUD)
         Route::prefix('ingredients')->group(function () {
-            Route::post('/', [IngredientController::class, 'store']);
+            Route::post('/', [IngredientController::class, 'store'])->middleware('master.unlocked');
         });
 
         Route::prefix('webhooks')->group(function () {
 
             // Webhooks
             Route::get('/', [WebhookController::class, 'index']);
-            Route::post('/', [WebhookController::class, 'store']);
-            Route::put('/{webhook}', [WebhookController::class, 'update']);
-            Route::delete('/{webhook}', [WebhookController::class, 'destroy']);
-            Route::post('/{webhook}/sync', [WebhookController::class, 'sync']);
-            Route::post('/sync-all', [WebhookController::class, 'syncAll']);
+            Route::post('/', [WebhookController::class, 'store'])->middleware('master.unlocked');
+            Route::put('/{webhook}', [WebhookController::class, 'update'])->middleware('master.unlocked');
+            Route::delete('/{webhook}', [WebhookController::class, 'destroy'])->middleware('master.unlocked');
+            Route::post('/{webhook}/sync', [WebhookController::class, 'sync'])->middleware('master.unlocked');
+            Route::post('/sync-all', [WebhookController::class, 'syncAll'])->middleware('master.unlocked');
 
         });
     });

@@ -20,6 +20,7 @@
                         v-else
                         :modelValue="localSettings"
                         @save="onSave"
+                        @open-activity-log="onOpenActivityLog"
                         @test="onTest"
                     />
                 </div>
@@ -74,7 +75,14 @@ export default {
                 this.modal.hide()
             }
         },
-
+        async onOpenActivityLog(settings) {
+            try {
+                this.$emit('open-activity-log', settings)
+                this.hide()
+            } catch (error) {
+                console.error('Open activity log failed:', error)
+            }
+        },
         async onSave(settings) {
             try {
                 this.$emit('save', settings)

@@ -35,7 +35,7 @@ class WebhookController extends Controller
         return response()->json($webhook, 201);
     }
 
-    public function update(Request $request, Webhook $webhook)
+    public function update(Request $request, $workspaceUuid, Webhook $webhook)
     {
         $workspace = App::make('workspace');
 

@@ -21,6 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \App\Models\Product::observe(\App\Observers\ProductObserver::class);
+        \App\Models\Category::observe(\App\Observers\CategoryObserver::class);
+        \App\Models\Collection::observe(\App\Observers\CollectionObserver::class);
+
         RateLimiter::for('create-session', function ($request) {
             return Limit::perHour(10)->by($request->ip());
         });

@@ -67,5 +67,6 @@ class Kernel extends HttpKernel
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'workspace.auth' => \App\Http\Middleware\WorkspaceAuth::class,
+        'master.unlocked' => \App\Http\Middleware\CheckMasterCodeUnlocked::class,
     ];
 }

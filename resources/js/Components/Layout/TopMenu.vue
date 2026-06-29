@@ -81,15 +81,61 @@
                         <i class="fa-solid fa-magnifying-glass search-icon"></i>
                         <input
                             v-model="search"
-                            type="search"
+                            type="text"
                             class="search-input"
                             placeholder="Поиск товара..."
+                            autocomplete="off"
+                            autocorrect="off"
+                            autocapitalize="off"
+                            spellcheck="false"
+                            name="search-{{ Math.random().toString(36).slice(2) }}"
+                            id="search-{{ store.uuid }}"
                         />
                         <button
                             v-if="search"
                             class="search-clear"
                             @click="search = ''"
                             title="Очистить"
+                        >
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Фильтры -->
+                    <div class="tool-group">
+                        <button
+                            class="filter-btn"
+                            :class="{ active: store.showOnlyStopList }"
+                            @click="store.toggleStopListFilter()"
+                            :title="`Товары в стоп-листе (${store.stopListCount})`"
+                        >
+                            <i class="fa-solid fa-ban"></i>
+                            <span class="btn-label">Стоп</span>
+                            <span v-if="store.stopListCount > 0" class="filter-badge stop-badge">
+                                {{ store.stopListCount }}
+                            </span>
+                        </button>
+
+                        <button
+                            class="filter-btn"
+                            :class="{ active: store.showOnlyActive }"
+                            @click="store.toggleActiveFilter()"
+                            :title="`Активные товары (${store.activeCount})`"
+                        >
+                            <i class="fa-solid fa-check-circle"></i>
+                            <span class="btn-label">Активные</span>
+                            <span v-if="store.activeCount > 0" class="filter-badge active-badge">
+                                {{ store.activeCount }}
+                            </span>
+                        </button>
+
+                        <button
+                            v-if="store.showOnlyStopList || store.showOnlyActive"
+                            class="filter-btn filter-clear"
+                            @click="store.clearFilters()"
+                            title="Сбросить фильтры"
                         >
                             <i class="fa-solid fa-xmark"></i>
                         </button>
@@ -133,6 +179,15 @@
                         >
                             <i class="fa-solid fa-file-pdf"></i>
                         </button>
+
+                        <button
+                            class="tool-btn master-btn"
+                            :class="masterButtonClass"
+                            @click="handleMasterClick"
+                            :title="masterButtonTitle"
+                        >
+                            <i class="fa-solid" :class="masterIcon"></i>
+                        </button>
                     </div>
                 </div>
 
@@ -171,12 +226,23 @@
                         <button
                             class="bulk-btn warning"
                             :disabled="!hasSelection"
-                            @click="showStopListModal = true"
-                            title="В стоп-лист"
+                            @click="showStopListAddModal = true"
+                            title="Добавить в стоп-лист"
                         >
-                            <i class="fa-solid fa-hand"></i>
-                            <span class="btn-label">Стоп</span>
+                            <i class="fa-solid fa-ban"></i>
+                            <span class="btn-label">В стоп</span>
                         </button>
+
+                        <button
+                            class="bulk-btn success"
+                            :disabled="!hasSelection"
+                            @click="showStopListRemoveModal = true"
+                            title="Убрать из стоп-листа"
+                        >
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span class="btn-label">Из стоп</span>
+                        </button>
+
                         <button
                             class="bulk-btn danger"
                             :disabled="!hasSelection"
@@ -199,6 +265,7 @@
         </Transition>
     </div>
 
+    <!-- Модалка удаления -->
     <ConfirmModal
         v-model:show="showDeleteModal"
         title="Удалить выбранные товары?"
@@ -207,24 +274,44 @@
         @reject="showDeleteModal = false"
     />
 
+    <!-- Модалка добавления в стоп-лист -->
     <ConfirmModal
-        v-model:show="showStopListModal"
+        v-model:show="showStopListAddModal"
         title="Отправить в стоп-лист?"
-        description="Выбранные товары будут помечены как недоступные для показа."
+        :description="`${selectedCount} ${pluralize(selectedCount, 'товар будет помечен', 'товара будут помечены', 'товаров будут помечены')} как недоступные для показа.`"
         @accept="addSelectedToStopList"
-        @reject="showStopListModal = false"
+        @reject="showStopListAddModal = false"
+    />
+
+    <!-- Модалка удаления из стоп-листа -->
+    <ConfirmModal
+        v-model:show="showStopListRemoveModal"
+        title="Убрать из стоп-листа?"
+        :description="`${selectedCount} ${pluralize(selectedCount, 'товар снова станет', 'товара снова станут', 'товаров снова станут')} активными и доступными для заказа.`"
+        @accept="removeSelectedFromStopList"
+        @reject="showStopListRemoveModal = false"
+    />
+
+    <!-- Модалка мастер-кода -->
+    <MasterCodeModal
+        ref="masterModal"
+        :mode="masterModalMode"
+        @success="onMasterSuccess"
+        @locked="onMasterLocked"
     />
 </template>
 
 <script>
 import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'
 import { useWorkspaceStore } from '@/store/workspace.js'
+import MasterCodeModal from '@/Components/Auth/MasterCodeModal.vue'
 
 export default {
     name: 'TopMenu',
 
     components: {
-        ConfirmModal
+        ConfirmModal,
+        MasterCodeModal
     },
 
     props: {
@@ -236,6 +323,7 @@ export default {
 
     data() {
         return {
+            masterModalMode: 'verify',
             isExporting: false,
             needSidebar: false,
             isSyncing: false,
@@ -243,13 +331,45 @@ export default {
             isOpen: false,
             search: '',
             showDeleteModal: false,
-            showStopListModal: false,
+            showStopListAddModal: false,
+            showStopListRemoveModal: false,
             debounceTimer: null,
             copyToast: false,
         }
     },
 
     computed: {
+        hasMasterCode() {
+            return this.store.hasMasterCode
+        },
+
+        isMasterLocked() {
+            return this.store.isMasterLocked
+        },
+
+        isMasterUnlocked() {
+            return this.store.isMasterUnlocked
+        },
+
+        masterIcon() {
+            if (!this.hasMasterCode) return 'fa-lock-open'
+            return this.isMasterLocked ? 'fa-lock' : 'fa-lock-open'
+        },
+
+        masterButtonClass() {
+            return {
+                'master-inactive': !this.hasMasterCode,
+                'master-locked': this.isMasterLocked,
+                'master-unlocked': this.isMasterUnlocked,
+            }
+        },
+
+        masterButtonTitle() {
+            if (!this.hasMasterCode) return 'Установить мастер-код'
+            if (this.isMasterLocked) return 'Товары защищены. Нажмите для ввода кода'
+            return 'Товары разблокированы. Нажмите для управления'
+        },
+
         selectedCount() {
             return this.store.selectedIds.length
         },
@@ -294,7 +414,6 @@ export default {
     },
 
     beforeUnmount() {
-        // Чистим таймер при уничтожении компонента
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer)
         }
@@ -306,21 +425,64 @@ export default {
                 this.$emit('export-vk')
             }
         },
+
         async syncAllWebhooks() {
             this.isSyncing = true
             try {
                 await axios.post(`/api/workspaces/${this.store.uuid}/webhooks/sync-all`)
-                // Можно показать уведомление об успехе
             } catch (error) {
                 console.error('Sync failed:', error)
-                alert('Ошибка при синхронизации')
+                this.$notify.error('Ошибка при синхронизации')
             } finally {
                 this.isSyncing = false
             }
         },
-        addSelectedToStopList() {
-            // TODO: логика стоп-листа
-            this.showStopListModal = false
+
+        // === СТОП-ЛИСТ ===
+        async addSelectedToStopList() {
+            const selectedCount = this.store.selectedIds.length
+
+            if (selectedCount === 0) {
+                this.showStopListAddModal = false
+                return
+            }
+
+            try {
+                const result = await this.store.addSelectedToStopList()
+
+                this.showStopListAddModal = false
+
+                this.$notify.success({
+                    title: 'Добавлено в стоп-лист',
+                    message: `${result.count} ${this.pluralize(result.count, 'товар добавлен', 'товара добавлено', 'товаров добавлено')}`
+                })
+            } catch (error) {
+                console.error('Add to stop list failed:', error)
+                this.$notify.error('Ошибка при добавлении в стоп-лист')
+            }
+        },
+
+        async removeSelectedFromStopList() {
+            const selectedCount = this.store.selectedIds.length
+
+            if (selectedCount === 0) {
+                this.showStopListRemoveModal = false
+                return
+            }
+
+            try {
+                const result = await this.store.removeSelectedFromStopList()
+
+                this.showStopListRemoveModal = false
+
+                this.$notify.success({
+                    title: 'Убрано из стоп-листа',
+                    message: `${result.count} ${this.pluralize(result.count, 'товар убран', 'товара убрано', 'товаров убрано')}`
+                })
+            } catch (error) {
+                console.error('Remove from stop list failed:', error)
+                this.$notify.error('Ошибка при удалении из стоп-листа')
+            }
         },
 
         async deleteSelectedProduct() {
@@ -332,22 +494,17 @@ export default {
             }
 
             try {
-                // Вызываем метод store для удаления
                 await this.store.removeProductsByIds()
 
-                // Закрываем модалку
                 this.showDeleteModal = false
 
-                // Показываем уведомление
                 this.$notify.success(`${selectedCount} ${this.pluralize(selectedCount, 'товар удалён', 'товара удалено', 'товаров удалено')}`)
-
             } catch (error) {
                 console.error('Delete products failed:', error)
                 this.$notify.error('Ошибка при удалении товаров')
             }
         },
 
-        // Утилита для склонения
         pluralize(count, one, two, five) {
             let n = Math.abs(count)
             n %= 100
@@ -396,12 +553,47 @@ export default {
             this.store.selectedIds = []
         },
 
+        handleMasterClick() {
+            if (!this.hasMasterCode) {
+                this.masterModalMode = 'set'
+                this.$refs.masterModal.show()
+                return
+            }
+
+            if (this.isMasterLocked) {
+                this.masterModalMode = 'verify'
+                this.$refs.masterModal.show()
+                return
+            }
+
+            this.masterModalMode = 'menu'
+            this.$refs.masterModal.show()
+        },
+
+        onMasterSuccess({ mode }) {
+            const messages = {
+                set: 'Мастер-код установлен. Товары защищены.',
+                verify: 'Товары разблокированы.',
+                change: 'Мастер-код изменён.',
+                reset: 'Мастер-код удалён. Защита снята.',
+            }
+            this.$notify?.success({
+                title: 'Готово',
+                message: messages[mode] || 'Действие выполнено'
+            })
+        },
+
+        onMasterLocked() {
+            this.$notify?.error({
+                title: 'Заблокировано',
+                message: 'Ввод заблокирован на 1 час'
+            })
+        },
     }
 }
 </script>
 
 <style scoped>
-
 .rotating {
     animation: rotate 1s linear infinite;
 }
@@ -545,6 +737,77 @@ export default {
     color: #fff;
     font-size: 11px;
     font-weight: 600;
+}
+
+/* === Фильтры === */
+.filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    color: #495057;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.filter-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.filter-btn.active {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.filter-btn.filter-clear {
+    color: #dc3545;
+    border-color: #f5c2c7;
+    padding: 7px 10px;
+}
+
+.filter-btn.filter-clear:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+.filter-badge {
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.filter-btn.active .filter-badge {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.stop-badge {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.filter-btn.active .stop-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.active-badge {
+    background: rgba(25, 135, 84, 0.1);
+    color: #198754;
+}
+
+.filter-btn.active .active-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
 }
 
 /* === Поиск === */
@@ -691,6 +954,15 @@ export default {
     background: #ffe69c;
 }
 
+.bulk-btn.success {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.bulk-btn.success:hover:not(:disabled) {
+    background: #a3cfbb;
+}
+
 .bulk-btn.danger {
     background: #f8d7da;
     color: #842029;
@@ -776,5 +1048,36 @@ export default {
     .divider {
         display: none;
     }
+}
+
+.master-btn {
+    transition: all 0.2s ease;
+}
+
+.master-btn.master-inactive {
+    color: #6c757d;
+}
+
+.master-btn.master-inactive:hover {
+    color: #0d6efd;
+    background: rgba(13, 110, 253, 0.1);
+}
+
+.master-btn.master-locked {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+}
+
+.master-btn.master-locked:hover {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+.master-btn.master-unlocked {
+    color: #198754;
+    background: rgba(25, 135, 84, 0.1);
+}
+
+.master-btn.master-unlocked:hover {
+    background: rgba(25, 135, 84, 0.2);
 }
 </style>

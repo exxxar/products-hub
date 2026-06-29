@@ -39,11 +39,11 @@
                 <!-- Режим сетки -->
                 <template v-if="viewMode === 'grid'">
                     <ProductGrid
-                        :products="store.products"
                         :selectedIds="store.selectedIds"
                         @create-product="openCreateProduct"
                         @edit-product="openEditProduct"
                         @toggle-select="toggleSelect"
+                        @toggle-stop-list="handleToggleStopList"
                     />
                 </template>
 
@@ -96,6 +96,7 @@
                                 :selectedIds="store.selectedIds"
                                 @edit-product="openEditProduct"
                                 @toggle-select="toggleSelect"
+                                @toggle-stop-list="handleToggleStopList"
                             />
                         </template>
 
@@ -119,6 +120,7 @@
                                     @create-product="openCreateProduct"
                                     @edit-product="openEditProduct"
                                     @toggle-select="toggleSelect"
+                                    @toggle-stop-list="handleToggleStopList"
                                 />
                             </div>
                         </template>
@@ -161,6 +163,7 @@
             ref="webhookModal"
             :modelValue="webhook"
             @save="saveWebhook"
+            @open-activity-log="openActivityLog"
             @test="testWebhook"
         />
 
@@ -175,6 +178,13 @@
             :category="store.editingCategory"
             @save="saveCategory"
         />
+
+        <Transition name="slide-right">
+            <ActivityLogPanel
+                v-if="showActivityLog"
+                @close="showActivityLog = false"
+            />
+        </Transition>
 
         <MenuConfiguratorModal ref="menuGeneratorModal" />
 
@@ -220,6 +230,7 @@ import CategoryModal from '../components/categories/CategoryModal.vue'
 import CategoryPresetsModal from '../components/categories/CategoryPresetsModal.vue'
 import NotifyContainer from "@/notify/NotifyContainer.vue";
 import MenuConfiguratorModal from '../components/Menu/MenuConfiguratorModal.vue'
+import ActivityLogPanel from '@/Components/Layout/ActivityLogPanel.vue'
 
 
 export default {
@@ -239,6 +250,7 @@ export default {
         CategoryModal,
         WebhookSettingsModal,
         PasswordModal,
+        ActivityLogPanel
 
     },
 
@@ -254,6 +266,7 @@ export default {
 
     data() {
         return {
+            showActivityLog: false,
             workspace: null,
             needPassword: false,
             needSidebar: false,
@@ -296,6 +309,23 @@ export default {
         this.handleVKCallback()
     },
     methods: {
+        openActivityLog() {
+            this.showActivityLog = true
+        },
+        async handleToggleStopList(productId) {
+            try {
+                const result = await this.store.toggleProductStopList(productId)
+
+                if (result.success) {
+                    this.$notify?.success({
+                        title: result.in_stop_list ? 'Добавлено в стоп-лист' : 'Убрано из стоп-листа',
+                        message: result.in_stop_list ? 'Товар скрыт из меню' : 'Товар снова активен'
+                    })
+                }
+            } catch (error) {
+                this.$notify?.error('Ошибка при изменении статуса')
+            }
+        },
         openMenuGenerator() {
             if (this.$refs.menuGeneratorModal) {
                 this.$refs.menuGeneratorModal.show()
@@ -364,6 +394,7 @@ export default {
         async initWorkspace() {
             this.workspace = this.item
 
+            console.log("Workspace", this.workspace)
             // Инициализируем store
             this.store.setUuid(this.item.uuid)
             this.store.setAccessToken(this.item.access_token)
@@ -374,8 +405,11 @@ export default {
             this.store.setCategories(this.item.categories || [])
             this.store.setWebhooks(this.item.webhooks || [])
 
+            this.store.syncMasterFromWorkspace(this.workspace)
             // === Инициализируем токен из localStorage (если есть) ===
             await this.store.initFromUrl()
+
+            this.store.initMasterUnlock()
 
 
             // Загружаем коллекции С товарами
@@ -390,6 +424,7 @@ export default {
                     this.store.accessUrl = `${window.location.origin}/w/${this.item.uuid}?token=${this.store.accessToken}`
                 }
             }
+
         },
 
         // === PWA ===
@@ -516,6 +551,10 @@ export default {
 
         // === Категории ===
         getProductsByCategory(categoryId) {
+            if (!categoryId)
+                return null;
+
+            console.log("Test", categoryId)
             return this.store.products.filter(p => p.category_id === categoryId)
         },
 
@@ -906,5 +945,28 @@ export default {
     .workspace-layout {
         flex-direction: column;
     }
+}
+
+.activity-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.slide-right-enter-active,
+.slide-right-leave-active {
+    transition: transform 0.25s ease;
+}
+
+.slide-right-enter-from,
+.slide-right-leave-to {
+    transform: translateX(100%);
 }
 </style>

@@ -14,18 +14,41 @@
                 </button>
             </div>
 
-            <!-- Товары -->
-            <div
-                v-for="product in displayProducts"
-                :key="product.id"
-                class="product-card-wrapper"
-            >
-                <ProductCard
-                    :product="product"
-                    :selected="displaySelectedIds.includes(product.id)"
-                    @toggle-select="$emit('toggle-select', product.id)"
-                    @edit="$emit('edit-product', product)"
-                />
+
+            <template v-if="displayProducts.length>0">
+                <!-- Товары -->
+                <div
+                    v-for="product in displayProducts"
+                    :key="product.id"
+                    class="product-card-wrapper"
+                >
+                    <ProductCard
+                        :product="product"
+                        :is-selected="isSelected(product.id)"
+                        @toggle-select="$emit('toggle-select', $event)"
+                        @edit-product="$emit('edit-product', $event)"
+                        @toggle-stop-list="handleToggleStopList"
+                    />
+                </div>
+            </template>
+
+            <div v-if="displayProducts.length === 0 && (store.showOnlyStopList || store.showOnlyActive)" class="empty-search-compact">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <div>
+                    <strong>Нет товаров в данном блоке</strong>
+                </div>
+
+            </div>
+
+            <div v-if="displayProducts.length === 0 && store.search" class="empty-search-compact">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <div>
+                    <strong>Ничего не найдено</strong>
+                    <p>По запросу <span class="search-query">«{{ store.search }}»</span></p>
+                </div>
+                <button type="button" class="clear-btn" @click="clearSearch">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
             <!-- Пустое состояние -->
@@ -62,13 +85,36 @@ export default {
             default: true
         }
     },
-
+    emits: ['toggle-select', 'edit-product'],
     data() {
         return {
             store: useWorkspaceStore()
         }
     },
+    methods: {
+        clearSearch() {
+            this.store.setSearch('')
+            // Если есть ссылка на TopMenu — можно очистить и там
+        },
+        isSelected(productId) {
+            return this.selectedIds.includes(productId)
+        },
 
+        async handleToggleStopList(productId) {
+            try {
+                const result = await this.$store.dispatch('toggleProductStopList', productId)
+
+                if (result.success) {
+                    this.$notify?.success({
+                        title: result.in_stop_list ? 'Добавлено в стоп-лист' : 'Убрано из стоп-листа',
+                        message: result.in_stop_list ? 'Товар скрыт из меню' : 'Товар снова активен'
+                    })
+                }
+            } catch (error) {
+                this.$notify?.error('Ошибка при изменении статуса')
+            }
+        }
+    },
     computed: {
         // Используем props если переданы, иначе берём из store
         displayProducts() {
@@ -199,5 +245,69 @@ export default {
     .product-grid {
         grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     }
+}
+
+.empty-search-compact {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 10px;
+    margin: 0px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #0d6efd;
+    border-radius: 10px;
+    justify-content: center;
+    flex-direction: column;
+}
+
+.empty-search-compact > i {
+    font-size: 24px;
+    color: #0d6efd;
+}
+
+.empty-search-compact strong {
+    display: block;
+    font-size: 14px;
+    color: #212529;
+    margin-bottom: 2px;
+    text-align: center;
+}
+
+.empty-search-compact p {
+    margin: 0;
+    font-size: 13px;
+    color: #6c757d;
+    text-align: center;
+}
+
+.empty-search-compact .search-query {
+    padding: 1px 6px;
+    background: #fff3cd;
+    color: #856404;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.empty-search-compact .clear-btn {
+
+    width: 32px;
+    height: 32px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.empty-search-compact .clear-btn:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
 }
 </style>

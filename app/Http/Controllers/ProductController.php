@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
@@ -174,7 +175,7 @@ class ProductController extends Controller
                 }
             }
 
-            \Log::error('Product creation failed: ' . $e->getMessage());
+            Log::error('Product creation failed: ' . $e->getMessage());
 
             return response()->json([
                 'message' => 'Ошибка при создании товара',
@@ -320,7 +321,7 @@ class ProductController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Product update failed: ' . $e->getMessage());
+            Log::error('Product update failed: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Ошибка при обновлении товара',
                 'error' => $e->getMessage()
@@ -426,5 +427,59 @@ class ProductController extends Controller
             Log::error('Bulk delete failed', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'Delete failed'], 500);
         }
+    }
+
+    // В ProductController.php добавить:
+
+    /**
+     * Добавить товары в стоп-лист
+     */
+    public function addToStopList(Request $request)
+    {
+        $workspace = App::make('workspace');
+
+        $validated = $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+
+        $count = $workspace->products()
+            ->whereIn('id', $ids)
+            ->update(['in_stop_list' => true]);
+
+        ActivityLogger::bulk('added_to_stop_list', 'product', $ids);
+
+        return response()->json([
+            'message' => 'Товары добавлены в стоп-лист',
+            'count' => $count,
+        ]);
+    }
+
+    /**
+     * Убрать товары из стоп-листа
+     */
+    public function removeFromStopList(Request $request)
+    {
+        $workspace = App::make('workspace');
+
+        $validated = $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+
+        $count = $workspace->products()
+            ->whereIn('id', $ids)
+            ->update(['in_stop_list' => false]);
+
+        ActivityLogger::bulk('removed_from_stop_list', 'product', $ids);
+
+        return response()->json([
+            'message' => 'Товары убраны из стоп-листа',
+            'count' => $count,
+        ]);
     }
 }

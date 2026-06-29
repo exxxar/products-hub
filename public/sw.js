@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v1.0.2';
 const STATIC_CACHE = `static-products-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-products-${CACHE_VERSION}`;
 const IMAGE_CACHE = `images-products-${CACHE_VERSION}`;
