@@ -63,7 +63,7 @@
                 <template v-else-if="viewMode === 'categories'">
                     <div class="categories-view">
                         <h5 class="categories-title">Группировка по категориям</h5>
-
+11
                         <template v-if="selectedCategory">
                             <div class="category-header-with-back">
                                 <button
@@ -110,7 +110,8 @@
                                 <div class="category-header">
                                     <h6 class="category-name">{{ cat.name }}</h6>
                                     <span class="category-count">
-                                {{ getCategoryProductCount(cat.id) }} товаров
+
+                                  {{cat.products_count}} товаров
                             </span>
                                 </div>
 
@@ -555,8 +556,7 @@ export default {
             if (!categoryId)
                 return null;
 
-            console.log("Test", categoryId)
-            return this.store.products.filter(p => p.category_id === categoryId)
+            return this.store.products.filter(p => p.categories.findIndex(sc=>sc.id === categoryId) !==-1 )
         },
 
         getCategoryProductCount(categoryId) {

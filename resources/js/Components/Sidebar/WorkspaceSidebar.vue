@@ -6,16 +6,6 @@
                 <button
                     type="button"
                     class="segment-btn"
-                    :class="{ active: activeTab === 'collections' }"
-                    @click="activeTab = 'collections'"
-                >
-                    <i class="fa-solid fa-folder"></i>
-                    <span class="segment-label">Коллекции</span>
-                    <span class="segment-count">{{ store.collections.length }}</span>
-                </button>
-                <button
-                    type="button"
-                    class="segment-btn"
                     :class="{ active: activeTab === 'categories' }"
                     @click="activeTab = 'categories'"
                 >
@@ -23,6 +13,17 @@
                     <span class="segment-label">Категории</span>
                     <span class="segment-count">{{ store.categories.length }}</span>
                 </button>
+                <button
+                    type="button"
+                    class="segment-btn"
+                    :class="{ active: activeTab === 'collections' }"
+                    @click="activeTab = 'collections'"
+                >
+                    <i class="fa-solid fa-folder"></i>
+                    <span class="segment-label">Коллекции</span>
+                    <span class="segment-count">{{ store.collections.length }}</span>
+                </button>
+
             </div>
         </div>
 
@@ -290,7 +291,7 @@ export default {
     data() {
         return {
             store: useWorkspaceStore(),
-            activeTab: 'collections',
+            activeTab: 'categories',
 
             // Collections
             showCreateCollectionModal: false,
