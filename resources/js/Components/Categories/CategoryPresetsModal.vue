@@ -34,6 +34,7 @@
                         </div>
                     </div>
 
+
                     <!-- Детали выбранного пресета -->
                     <div v-else class="preset-details">
                         <button type="button" class="btn-back" @click="selectedPreset = null">
@@ -51,18 +52,31 @@
                             </div>
                         </div>
 
-                        <div class="categories-preview">
+                        <!-- ✅ Защита от null + индикатор загрузки -->
+                        <div v-if="!presetDetails" class="loading-details">
+                            <i class="fa-solid fa-spinner fa-spin"></i>
+                            <span>Загрузка категорий...</span>
+                        </div>
+
+                        <!-- ✅ Блок с категориями рендерится только когда presetDetails загружен -->
+                        <div v-else-if="presetDetails.categories && presetDetails.categories.length > 0" class="categories-preview">
                             <h6>Категории в шаблоне:</h6>
                             <div class="categories-list">
-                                <span
-                                    v-for="(category, index) in presetDetails.categories"
-                                    :key="index"
-                                    class="category-chip"
-                                    :style="{ borderColor: selectedPreset.color, color: selectedPreset.color }"
-                                >
-                                    {{ category }}
-                                </span>
+            <span
+                v-for="(category, index) in presetDetails.categories"
+                :key="index"
+                class="category-chip"
+                :style="{ borderColor: selectedPreset.color, color: selectedPreset.color }"
+            >
+                {{ category }}
+            </span>
                             </div>
+                        </div>
+
+                        <!-- Если категорий нет -->
+                        <div v-else class="no-categories">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span>В этом шаблоне нет категорий</span>
                         </div>
 
                         <div v-if="hasExistingCategories" class="warning-box">
@@ -76,11 +90,12 @@
                         <div v-if="hasExistingCategories" class="replace-option">
                             <label class="checkbox-label">
                                 <input
+                                    id="replaceExisting"
                                     type="checkbox"
                                     v-model="replaceExisting"
                                     :disabled="!canReplace"
                                 />
-                                <span>Заменить существующие категории</span>
+                                <label for="replaceExisting">Заменить существующие категории</label>
                             </label>
                             <p v-if="!canReplace" class="hint-text">
                                 <i class="fa-solid fa-circle-info"></i>
@@ -187,14 +202,32 @@ export default {
 
         async selectPreset(preset) {
             this.selectedPreset = preset
+            this.presetDetails = null // ✅ Сбрасываем перед загрузкой
 
+            console.log("Test")
             try {
                 const response = await axios.get(
                     `/api/workspaces/${this.store.uuid}/category-presets/${preset.key}`
                 )
-                this.presetDetails = response.data
+
+                // ✅ Проверяем что ответ содержит данные
+                if (response.data && typeof response.data === 'object') {
+                    this.presetDetails = response.data
+                } else {
+                    console.warn('Preset details response is invalid:', response.data)
+                    this.presetDetails = { categories: [] }
+                }
             } catch (error) {
                 console.error('Failed to load preset details:', error)
+
+                // ✅ Устанавливаем пустой объект чтобы не было null
+                this.presetDetails = {
+                    categories: [],
+                    error: error.response?.data?.message || 'Ошибка загрузки'
+                }
+
+                // Показываем уведомление
+                this.$notify?.error('Не удалось загрузить детали шаблона')
             }
         },
 
@@ -504,5 +537,39 @@ export default {
 .btn-apply:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* === Loading Details === */
+.loading-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 30px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.loading-details i {
+    font-size: 18px;
+    color: #0d6efd;
+}
+
+/* === No Categories === */
+.no-categories {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    color: #6c757d;
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+.no-categories i {
+    color: #0d6efd;
+    font-size: 16px;
 }
 </style>

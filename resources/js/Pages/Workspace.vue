@@ -493,6 +493,7 @@ export default {
 
         // === Collections ===
         onSelectCollection(collection) {
+
             this.selectedCollection = collection
             this.selectedCategory = null
             this.store.clearSelection()
