@@ -13,6 +13,13 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
+
+        $schedule->command('workspace:dump')
+            ->dailyAt('03:00')
+            ->appendOutputTo(storage_path('logs/workspace-dumps.log'));
+
+
+        $schedule->command('presence:cleanup')->everyMinute();
     }
 
     /**

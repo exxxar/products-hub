@@ -11,6 +11,7 @@ import importExport from './modules/importExport'
 import menu from './modules/menu'
 import master from './modules/master'
 import activity from './modules/activity'
+import presence from './modules/presence'
 
 /**
  * Объединяет модули в единую структуру store
@@ -57,6 +58,7 @@ const merged = mergeModules(
     menu,
     master,
     activity,
+    presence,
     importExport
 )
 

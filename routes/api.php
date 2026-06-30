@@ -5,6 +5,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\MenuDefaultImageController;
 use App\Http\Controllers\MenuGeneratorController;
+use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WebhookController;
 
@@ -153,6 +154,11 @@ Route::prefix('workspaces/{uuid}')
             Route::delete('/{category_id}', [CategoryController::class, 'destroy'])->middleware('master.unlocked');
         });
 
+        Route::prefix('presence')->group(function () {
+            Route::post('/heartbeat', [PresenceController::class, 'heartbeat']);
+            Route::get('/users', [PresenceController::class, 'users']);
+            Route::post('/leave', [PresenceController::class, 'leave']);
+        });
         // Подборки
         Route::prefix('collections')->group(function () {
             Route::get('/', [CollectionController::class, 'index']);

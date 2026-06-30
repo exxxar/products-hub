@@ -4,6 +4,7 @@
 
         <NotifyContainer/>
 
+
         <TopMenu
             :viewMode="viewMode"
             @change-view="viewMode = $event"
@@ -196,6 +197,9 @@
 
         <MenuConfiguratorModal ref="menuGeneratorModal" />
 
+        <div class="online-badge-fixed-container">
+            <OnlineBadge />
+        </div>
         <!-- PWA установка -->
         <div class="modal fade" id="installPwaModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
@@ -223,6 +227,7 @@
 
 <script>
 import TopMenu from '../Components/Layout/TopMenu.vue'
+import OnlineBadge from '@/Components/Layout/OnlineBadge.vue'
 import WorkspaceSidebar from '../components/Sidebar/WorkspaceSidebar.vue'
 import ProductGrid from '../Components/Products/ProductGrid.vue'
 import ProductTable from '../Components/Products/ProductTable.vue'
@@ -247,7 +252,7 @@ export default {
     components: {
         NotifyContainer,
         TopMenu,
-
+        OnlineBadge,
         MenuConfiguratorModal,
         CategoryPresetsModal,
         ProductGrid,
@@ -317,6 +322,11 @@ export default {
 
         // Проверяем есть ли callback от VK
         this.handleVKCallback()
+
+        this.store.startPresenceTracking()
+    },
+    beforeUnmount() {
+        this.store.stopPresenceTracking()
     },
     methods: {
         openActivityLog() {
@@ -1012,5 +1022,12 @@ export default {
 .slide-right-enter-from,
 .slide-right-leave-to {
     transform: translateX(100%);
+}
+
+.online-badge-fixed-container {
+    width: 150px;
+    position: fixed;
+    bottom:50px;
+    right: 20px;
 }
 </style>
