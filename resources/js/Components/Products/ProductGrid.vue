@@ -102,7 +102,7 @@ export default {
 
         async handleToggleStopList(productId) {
             try {
-                const result = await this.$store.dispatch('toggleProductStopList', productId)
+                const result = await this.store.toggleProductStopList(productId)
 
                 if (result.success) {
                     this.$notify?.success({
