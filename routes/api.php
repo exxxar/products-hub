@@ -155,7 +155,14 @@ Route::prefix('workspaces/{uuid}')
 
         // Подборки
         Route::prefix('collections')->group(function () {
+            Route::get('/', [CollectionController::class, 'index']);
+
             Route::post('/', [CollectionController::class, 'store'])->middleware('master.unlocked');
+            Route::put('/{collection}', [CollectionController::class, 'update'])->middleware('master.unlocked');
+            Route::delete('/{collection}', [CollectionController::class, 'destroy'])->middleware('master.unlocked');
+            Route::post('/{collection}/image', [CollectionController::class, 'uploadImage'])->middleware('master.unlocked');
+            Route::get('/{collection}/preview', [CollectionController::class, 'previewProducts']);
+            Route::get('/{collection}/show', [CollectionController::class, 'show']);
         });
 
         // Ингредиенты (если нужны отдельные CRUD)

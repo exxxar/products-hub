@@ -154,6 +154,14 @@
             @save="saveCollection"
         />
 
+
+        <!-- Модалка товаров коллекции -->
+        <CollectionProductsModal
+            ref="collectionProductsModal"
+            @edit-collection="openEditCollection"
+        />
+
+
         <ImportModal
             ref="importModal"
             @import="importProducts"
@@ -219,7 +227,7 @@ import WorkspaceSidebar from '../components/Sidebar/WorkspaceSidebar.vue'
 import ProductGrid from '../Components/Products/ProductGrid.vue'
 import ProductTable from '../Components/Products/ProductTable.vue'
 import ProductModal from '../Components/Products/ProductModal.vue'
-import CollectionModal from '../Components/Collections/CollectionModal.vue'
+import CollectionModal from '../Components/Collections/CollectionFormModal.vue'
 import ImportModal from '../Components/Import/ImportModal.vue'
 import WebhookSettingsModal from '../Components/Layout/SettingsModal.vue'
 
@@ -231,7 +239,7 @@ import CategoryPresetsModal from '../components/categories/CategoryPresetsModal.
 import NotifyContainer from "@/notify/NotifyContainer.vue";
 import MenuConfiguratorModal from '../components/Menu/MenuConfiguratorModal.vue'
 import ActivityLogPanel from '@/Components/Layout/ActivityLogPanel.vue'
-
+import CollectionProductsModal from '@/Components/Collections/CollectionProductsModal.vue'
 
 export default {
     name: 'Workspace',
@@ -239,6 +247,7 @@ export default {
     components: {
         NotifyContainer,
         TopMenu,
+
         MenuConfiguratorModal,
         CategoryPresetsModal,
         ProductGrid,
@@ -246,6 +255,7 @@ export default {
         ProductModal,
         CollectionModal,
         WorkspaceSidebar,
+        CollectionProductsModal,
         ImportModal,
         CategoryModal,
         WebhookSettingsModal,
@@ -427,6 +437,9 @@ export default {
 
         },
 
+        async onCollectionSaved() {
+            await this.store.loadCollections()
+        },
         // === PWA ===
         installPWA() {
             if (typeof window.installPWA === 'function') {
@@ -495,6 +508,7 @@ export default {
         onSelectCollection(collection) {
 
             this.selectedCollection = collection
+            this.handleSelectCollection(collection)
             this.selectedCategory = null
             this.store.clearSelection()
         },
@@ -567,6 +581,36 @@ export default {
             if (this.$refs.collectionModal) {
                 this.$refs.collectionModal.show()
             }
+        },
+
+        async handleSelectCollection(collection) {
+            this.selectedCollection = collection
+            this.selectedCategory = null // Сбрасываем категорию
+
+            if (collection) {
+                // Открываем модалку с товарами коллекции
+               await this.$refs.collectionProductsModal.show(collection)
+            }
+        },
+
+
+        // === Обработка выбора категории ===
+        handleSelectCategory(category) {
+            this.selectedCategory = category
+            this.selectedCollection = null // Сбрасываем коллекцию
+            this.store.exitCollectionView()
+            // ... остальная логика выбора категории
+        },
+
+        // === Выход из просмотра коллекции ===
+        exitCollectionView() {
+            this.store.exitCollectionView()
+            this.selectedCollection = null
+        },
+
+        // === Редактирование коллекции ===
+        openEditCollection(collection) {
+            this.$refs.collectionModal?.show(collection)
         },
 
         async saveCollection(data) {

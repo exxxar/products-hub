@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Models\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Storage;
 
 class CollectionController extends Controller
 {
@@ -13,13 +15,28 @@ class CollectionController extends Controller
         $workspace = App::make('workspace');
 
         $collections = $workspace->collections()
-            ->withCount('products')
-            ->with(['products' => function($query) {
-                $query->with(['categories', 'attributes', 'ingredients'])
-                    ->orderBy('collection_product.sort_order');
-            }])
+            ->with('products')
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(fn($c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'description' => $c->description,
+                'short_description' => $c->short_description,
+                'type' => $c->type,
+                'type_label' => $c->type_label,
+                'rule_config' => $c->rule_config,
+                'rule_description' => $c->rule_description,
+                'pricing_type' => $c->pricing_type,
+                'price' => $c->calculated_price,
+                'old_price' => $c->calculated_old_price,
+                'discount_percent' => $c->discount_percent,
+                'products_count' => $c->products_count,
+                'images' => $c->images,
+                'is_active' => $c->is_active,
+                'in_stop_list' => $c->in_stop_list,
+                'created_at' => $c->created_at->toIso8601String(),
+            ]);
 
         return response()->json($collections);
     }
@@ -31,129 +48,179 @@ class CollectionController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:500',
+            'type' => 'required|in:manual,category_all,categories_all,workspace_all,category_select',
+            'rule_config' => 'nullable|array',
+            'pricing_type' => 'required|in:sum,fixed',
+            'fixed_price' => 'nullable|numeric|min:0',
+            'fixed_old_price' => 'nullable|numeric|min:0',
             'product_ids' => 'nullable|array',
-            'product_ids.*' => 'integer|exists:products,id',
+            'product_ids.*' => 'integer',
         ]);
 
-        $collection = $workspace->collections()->create([
+        $collection = Collection::create([
+            'workspace_id' => $workspace->id,
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
+            'short_description' => $validated['short_description'] ?? null,
+            'type' => $validated['type'],
+            'rule_config' => $validated['rule_config'] ?? null,
+            'pricing_type' => $validated['pricing_type'],
+            'fixed_price' => $validated['fixed_price'] ?? null,
+            'fixed_old_price' => $validated['fixed_old_price'] ?? null,
+            'is_active' => true,
         ]);
 
-        // Синхронизация товаров если переданы
-        if (!empty($validated['product_ids'])) {
-            $collection->products()->sync(
-                collect($validated['product_ids'])->mapWithKeys(function ($id, $index) {
-                    return [$id => ['sort_order' => $index]];
-                })->toArray()
-            );
+        // Синхронизация товаров для manual и category_select
+        if (in_array($validated['type'], ['manual', 'category_select']) && isset($validated['product_ids'])) {
+            $collection->products()->sync($validated['product_ids']);
         }
 
-        $collection->load('products');
-
-        return response()->json($collection, 201);
+        return response()->json($collection->load('products'), 201);
     }
 
-
-    public function destroy($workspaceUuid, $collectionId)
+    public function update(Request $request, Collection $collection)
     {
         $workspace = App::make('workspace');
 
-
-        $collection = $workspace->collections()->findOrFail($collectionId);
-
-        $collection->products()->detach();
-        $collection->delete();
-
-        return response()->json(['message' => 'Collection deleted']);
-    }
-
-    public function show($workspaceUuid, $collectionId)
-    {
-        $workspace = App::make('workspace');
-
-        $collection = $workspace->collections()->findOrFail($collectionId);
-        $collection->load('products');
-
-        return response()->json($collection);
-    }
-
-    public function update(Request $request, $collectionId)
-    {
-        $workspace = App::make('workspace');
-
-        $collection = $workspace->collections()->findOrFail($collectionId);
+        if ($collection->workspace_id !== $workspace->id) {
+            abort(403);
+        }
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:500',
+            'type' => 'sometimes|in:manual,category_all,categories_all,workspace_all,category_select',
+            'rule_config' => 'nullable|array',
+            'pricing_type' => 'sometimes|in:sum,fixed',
+            'fixed_price' => 'nullable|numeric|min:0',
+            'fixed_old_price' => 'nullable|numeric|min:0',
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'integer',
         ]);
 
         $collection->update($validated);
 
-        return response()->json($collection);
-    }
-
-    public function addProducts(Request $request, $collectionId)
-    {
-        $workspace = App::make('workspace');
-
-        $collection = $workspace->collections()->findOrFail($collectionId);
-
-        $validated = $request->validate([
-            'product_ids' => 'required|array',
-            'product_ids.*' => 'integer|exists:products,id',
-        ]);
-
-        $maxOrder = $collection->products()->max('sort_order') ?? 0;
-
-        $syncData = [];
-        foreach ($validated['product_ids'] as $index => $productId) {
-            $syncData[$productId] = ['sort_order' => $maxOrder + $index + 1];
+        if (isset($validated['product_ids'])) {
+            $collection->products()->sync($validated['product_ids']);
         }
 
-        $collection->products()->syncWithoutDetaching($syncData);
-        $collection->load('products');
-
-        return response()->json($collection);
+        return response()->json($collection->fresh()->load('products'));
     }
 
-    public function removeProducts(Request $request, $collectionId)
+    public function destroy(Collection $collection)
     {
         $workspace = App::make('workspace');
 
-        $collection = $workspace->collections()->findOrFail($collectionId);
-
-        $validated = $request->validate([
-            'product_ids' => 'required|array',
-            'product_ids.*' => 'integer|exists:products,id',
-        ]);
-
-        $collection->products()->detach($validated['product_ids']);
-        $collection->load('products');
-
-        return response()->json($collection);
-    }
-
-    public function reorderProducts(Request $request, $collectionId)
-    {
-        $workspace = App::make('workspace');
-
-        $collection = $workspace->collections()->findOrFail($collectionId);
-
-        $validated = $request->validate([
-            'product_ids' => 'required|array',
-            'product_ids.*' => 'integer|exists:products,id',
-        ]);
-
-        foreach ($validated['product_ids'] as $index => $productId) {
-            $collection->products()->updateExistingPivot($productId, [
-                'sort_order' => $index
-            ]);
+        if ($collection->workspace_id !== $workspace->id) {
+            abort(403);
         }
 
-        $collection->load('products');
+        $collection->products()->detach();
+        $collection->delete();
 
-        return response()->json($collection);
+        return response()->json(['message' => 'Коллекция удалена']);
+    }
+
+    /**
+     * Загрузка картинки коллекции
+     */
+    public function uploadImage(Request $request, Collection $collection)
+    {
+        $workspace = App::make('workspace');
+
+        if ($collection->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048',
+        ]);
+
+        $path = $request->file('image')->store('collection-images/' . $workspace->id, 'public');
+
+        $images = $collection->images ?? [];
+        $images[] = [
+            'url' => Storage::url($path),
+            'path' => $path,
+        ];
+
+        $collection->update(['images' => $images]);
+
+        return response()->json([
+            'images' => $collection->images,
+        ]);
+    }
+
+    /**
+     * Получить товары коллекции (для предпросмотра)
+     */
+    public function previewProducts(Collection $collection)
+    {
+        $workspace = App::make('workspace');
+
+        if ($collection->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $products = $collection->getCollectionProducts();
+
+        return response()->json([
+            'products' => $products,
+            'count' => $products->count(),
+            'total_price' => $products->sum('price'),
+        ]);
+    }
+
+    public function show($workspaceUuid, Collection $collection)
+    {
+        $workspace = App::make('workspace');
+
+        if ($collection->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $collection->load(['products.categories', 'products.attributes']);
+
+        // Получаем товары коллекции (по правилам или вручную)
+        $products = $collection->getCollectionProducts();
+
+        // Форматируем товары
+        $productsData = $products->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'price' => (float) $product->price,
+                'old_price' => $product->old_price ? (float) $product->old_price : null,
+                'description' => $product->description,
+                'images' => $product->images,
+                'is_active' => $product->is_active,
+                'in_stop_list' => $product->in_stop_list,
+                'categories' => $product->categories->map(fn($c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                ])->values()->all(),
+            ];
+        });
+
+        return response()->json([
+            'collection' => [
+                'id' => $collection->id,
+                'name' => $collection->name,
+                'description' => $collection->description,
+                'type' => $collection->type,
+                'type_label' => $collection->type_label,
+                'pricing_type' => $collection->pricing_type,
+                'price' => $collection->calculated_price,
+                'old_price' => $collection->calculated_old_price,
+                'discount_percent' => $collection->discount_percent,
+                'products_count' => $products->count(),
+                'images' => $collection->images,
+            ],
+            'products' => $productsData->values()->all(),
+            'total_price' => $productsData->sum('price'),
+        ]);
     }
 }

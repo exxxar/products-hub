@@ -19,11 +19,10 @@
                     :class="{ active: activeTab === 'collections' }"
                     @click="activeTab = 'collections'"
                 >
-                    <i class="fa-solid fa-folder"></i>
+                    <i class="fa-solid fa-box-open"></i>
                     <span class="segment-label">Коллекции</span>
                     <span class="segment-count">{{ store.collections.length }}</span>
                 </button>
-
             </div>
         </div>
 
@@ -32,41 +31,118 @@
             <div v-if="activeTab === 'collections'" key="collections" class="sidebar-content">
                 <!-- Все товары -->
                 <div
-                    class="sidebar-item"
+                    class="collection-card all-products"
                     :class="{ active: !selectedCollection }"
                     @click="selectCollection(null)"
                 >
-                    <i class="fa-solid fa-boxes-stacked"></i>
-                    <span class="item-name">Все товары</span>
-                    <span class="item-count">{{ store.products.length }}</span>
+                    <div class="card-image">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                    </div>
+                    <div class="card-info">
+                        <div class="card-name">Все товары</div>
+                        <div class="card-meta">
+                            <span class="meta-count">{{ store.products.length }} товаров</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Коллекции -->
                 <div
                     v-for="collection in store.collections"
                     :key="collection.id"
-                    class="sidebar-item"
-                    :class="{ active: selectedCollection?.id === collection.id }"
+                    class="collection-card"
+                    :class="{
+                        active: selectedCollection?.id === collection.id,
+                        'in-stop-list': collection.in_stop_list,
+                        inactive: !collection.is_active
+                    }"
                     @click="selectCollection(collection)"
                 >
-                    <i class="fa-solid fa-folder"></i>
-                    <span class="item-name">{{ collection.name }}</span>
-                    <span class="item-count">{{ collection.products_count || 0 }}</span>
+                    <!-- Изображение -->
+                    <div class="card-image">
+                        <img
+                            v-if="collection.images && collection.images.length > 0"
+                            :src="collection.images[0].url"
+                            :alt="collection.name"
+                        />
+                        <div v-else class="image-placeholder">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
 
-                    <button
-                        type="button"
-                        class="btn-delete"
-                        @click.stop="confirmDeleteCollection(collection)"
-                        title="Удалить коллекцию"
-                    >
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
+                        <!-- Бейджи -->
+                        <div class="card-badges">
+                            <div v-if="collection.in_stop_list" class="badge badge-stop">
+                                <i class="fa-solid fa-ban"></i>
+                            </div>
+                            <div
+                                v-if="collection.discount_percent > 0"
+                                class="badge badge-discount"
+                            >
+                                -{{ collection.discount_percent }}%
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Информация -->
+                    <div class="card-info">
+                        <div class="card-name">{{ collection.name }}</div>
+
+                        <div class="card-meta">
+                            <span class="meta-type" :title="collection.type_label">
+                                <i :class="getTypeIcon(collection.type)"></i>
+                                <span class="type-text">{{ collection.products_count }} шт.</span>
+                            </span>
+                        </div>
+
+                        <!-- Цена -->
+                        <div class="card-price">
+                            <span
+                                v-if="collection.old_price && collection.old_price > collection.price"
+                                class="old-price"
+                            >
+                                {{ formatPrice(collection.old_price) }}
+                            </span>
+                            <span class="current-price">
+                                {{ formatPrice(collection.price) }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Кнопки действий -->
+                    <div class="card-actions" @click.stop>
+                        <button
+                            type="button"
+                            class="action-btn"
+                            @click="toggleStopList(collection)"
+                            :title="collection.in_stop_list ? 'Убрать из стоп-листа' : 'В стоп-лист'"
+                            :class="{ active: collection.in_stop_list }"
+                        >
+                            <i class="fa-solid" :class="collection.in_stop_list ? 'fa-circle-check' : 'fa-ban'"></i>
+                        </button>
+                        <button
+                            type="button"
+                            class="action-btn"
+                            @click="openEditCollection(collection)"
+                            title="Редактировать"
+                        >
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button
+                            type="button"
+                            class="action-btn delete"
+                            @click="confirmDeleteCollection(collection)"
+                            title="Удалить"
+                        >
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
 
+                <!-- Пустое состояние -->
                 <div v-if="store.collections.length === 0" class="empty-hint">
-                    <i class="fa-solid fa-folder-plus"></i>
+                    <i class="fa-solid fa-box-open"></i>
                     <p>Нет коллекций</p>
-                    <small>Создайте первую коллекцию</small>
+                    <small>Создайте первую коллекцию-пакет</small>
                 </div>
 
                 <!-- Кнопка создания -->
@@ -74,7 +150,7 @@
                     <button
                         type="button"
                         class="btn-create"
-                        @click="showCreateCollectionModal = true"
+                        @click="openCreateCollection"
                     >
                         <i class="fa-solid fa-plus"></i>
                         Новая коллекция
@@ -121,9 +197,8 @@
                     <small>Создайте первую категорию</small>
                 </div>
 
-                <!-- Кнопка создания -->
+                <!-- Кнопки создания -->
                 <div class="sidebar-footer">
-
                     <button
                         type="button"
                         class="btn-preset"
@@ -141,54 +216,15 @@
                         <i class="fa-solid fa-plus"></i>
                         Новая категория
                     </button>
-
-
                 </div>
             </div>
         </Transition>
 
-        <!-- Модалка создания коллекции -->
-        <div v-if="showCreateCollectionModal" class="modal-overlay" @click="showCreateCollectionModal = false">
-            <div class="modal-content" @click.stop>
-                <h6>Создать коллекцию</h6>
-
-                <div class="form-group">
-                    <label class="form-label">Название</label>
-                    <input
-                        v-model="newCollection.name"
-                        type="text"
-                        class="form-input"
-                        placeholder="Например: Хиты продаж"
-                        @keyup.enter="createCollection"
-                        ref="collectionNameInput"
-                    />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Описание (необязательно)</label>
-                    <textarea
-                        v-model="newCollection.description"
-                        class="form-input"
-                        placeholder="Описание коллекции..."
-                        rows="3"
-                    ></textarea>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn-cancel" @click="showCreateCollectionModal = false">
-                        Отмена
-                    </button>
-                    <button
-                        type="button"
-                        class="btn-save"
-                        @click="createCollection"
-                        :disabled="!newCollection.name.trim()"
-                    >
-                        Создать
-                    </button>
-                </div>
-            </div>
-        </div>
+        <!-- Модалка создания/редактирования коллекции -->
+        <CollectionFormModal
+            ref="collectionFormModal"
+            @saved="onCollectionSaved"
+        />
 
         <!-- Модалка подтверждения удаления коллекции -->
         <div v-if="showDeleteCollectionModal" class="modal-overlay" @click="showDeleteCollectionModal = false">
@@ -266,9 +302,14 @@
 
 <script>
 import { useWorkspaceStore } from '@/store/workspace.js'
+import CollectionFormModal from '@/Components/Collections/CollectionFormModal.vue'
 
 export default {
     name: 'WorkspaceSidebar',
+
+    components: {
+        CollectionFormModal
+    },
 
     emits: [
         'select-collection',
@@ -294,29 +335,14 @@ export default {
             activeTab: 'categories',
 
             // Collections
-            showCreateCollectionModal: false,
             showDeleteCollectionModal: false,
             collectionToDelete: null,
             isDeletingCollection: false,
-            newCollection: {
-                name: '',
-                description: ''
-            },
 
             // Categories
             showDeleteCategoryModal: false,
             categoryToDelete: null,
             isDeletingCategory: false
-        }
-    },
-
-    watch: {
-        showCreateCollectionModal(val) {
-            if (val) {
-                this.$nextTick(() => {
-                    this.$refs.collectionNameInput?.focus()
-                })
-            }
         }
     },
 
@@ -326,20 +352,31 @@ export default {
             this.$emit('select-collection', collection)
         },
 
-        async createCollection() {
-            if (!this.newCollection.name.trim()) return
+        openCreateCollection() {
+            this.$refs.collectionFormModal.show()
+        },
 
+        openEditCollection(collection) {
+            this.$refs.collectionFormModal.show(collection)
+        },
+
+        async onCollectionSaved() {
+            await this.store.loadCollections()
+        },
+
+        async toggleStopList(collection) {
             try {
-                await this.store.saveCollection({
-                    name: this.newCollection.name,
-                    description: this.newCollection.description
-                })
+                const result = await this.store.toggleCollectionStopList(collection.id)
 
-                this.showCreateCollectionModal = false
-                this.newCollection = { name: '', description: '' }
+                if (result?.success) {
+                    this.$notify?.success({
+                        title: result.in_stop_list ? 'Добавлено в стоп-лист' : 'Убрано из стоп-листа',
+                        message: collection.name
+                    })
+                }
             } catch (error) {
-                console.error('Failed to create collection:', error)
-                alert('Ошибка при создании коллекции')
+                console.error('Toggle stop list failed:', error)
+                this.$notify?.error('Ошибка при изменении статуса')
             }
         },
 
@@ -363,9 +400,11 @@ export default {
 
                 this.showDeleteCollectionModal = false
                 this.collectionToDelete = null
+
+                this.$notify?.success('Коллекция удалена')
             } catch (error) {
                 console.error('Failed to delete collection:', error)
-                alert('Ошибка при удалении коллекции')
+                this.$notify?.error('Ошибка при удалении')
             } finally {
                 this.isDeletingCollection = false
             }
@@ -373,7 +412,6 @@ export default {
 
         // === Categories ===
         selectCategory(category) {
-
             this.$emit('select-category', category)
         },
 
@@ -400,10 +438,27 @@ export default {
             } catch (error) {
                 console.error('Failed to delete category:', error)
                 const message = error.response?.data?.message || 'Ошибка при удалении'
-                alert(message)
+                this.$notify?.error(message)
             } finally {
                 this.isDeletingCategory = false
             }
+        },
+
+        // === Helpers ===
+        getTypeIcon(type) {
+            const icons = {
+                manual: 'fa-solid fa-hand-pointer',
+                category_all: 'fa-solid fa-folder-open',
+                categories_all: 'fa-solid fa-folder-tree',
+                workspace_all: 'fa-solid fa-boxes-stacked',
+                category_select: 'fa-solid fa-list-check',
+            }
+            return icons[type] || 'fa-solid fa-box'
+        },
+
+        formatPrice(price) {
+            if (price === null || price === undefined) return '0 ₽'
+            return new Intl.NumberFormat('ru-RU').format(price) + ' ₽'
         }
     }
 }
@@ -449,7 +504,6 @@ export default {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    position: relative;
 }
 
 .segment-btn:hover:not(.active) {
@@ -467,10 +521,6 @@ export default {
     font-size: 13px;
 }
 
-.segment-label {
-    font-weight: 500;
-}
-
 .segment-count {
     display: inline-flex;
     align-items: center;
@@ -483,7 +533,6 @@ export default {
     color: #6c757d;
     font-size: 11px;
     font-weight: 600;
-    transition: all 0.2s ease;
 }
 
 .segment-btn.active .segment-count {
@@ -500,7 +549,235 @@ export default {
     flex-direction: column;
 }
 
-/* === Items === */
+/* === Карточки коллекций === */
+.collection-card {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.collection-card:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+}
+
+.collection-card.active {
+    border-color: #0d6efd;
+    background: #f8f9ff;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+}
+
+.collection-card.in-stop-list {
+    border-color: #f5c2c7;
+    background: linear-gradient(to bottom, #fff5f5 0%, #fff 100%);
+}
+
+.collection-card.inactive {
+    opacity: 0.6;
+}
+
+.all-products {
+    border-style: dashed;
+    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+}
+
+.all-products:hover {
+    border-color: #0d6efd;
+    background: linear-gradient(135deg, #e7f1ff 0%, #fff 100%);
+}
+
+.all-products .card-image {
+    background: linear-gradient(135deg, #e7f1ff 0%, #cfe2ff 100%);
+}
+
+.all-products .card-image i {
+    color: #0d6efd;
+    font-size: 22px;
+}
+
+/* === Изображение === */
+.card-image {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-image i {
+    font-size: 18px;
+    color: #adb5bd;
+}
+
+/* === Бейджи === */
+.card-badges {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.badge {
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.badge-stop {
+    background: #dc3545;
+    color: #fff;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.badge-stop i {
+    font-size: 8px;
+    color: #fff;
+}
+
+.badge-discount {
+    background: #fd7e14;
+    color: #fff;
+}
+
+/* === Информация === */
+.card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #212529;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.meta-type {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.meta-type i {
+    font-size: 10px;
+    color: #0d6efd;
+}
+
+.type-text {
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+.meta-count {
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+/* === Цена === */
+.card-price {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.current-price {
+    font-size: 14px;
+    font-weight: 700;
+    color: #212529;
+}
+
+.old-price {
+    font-size: 11px;
+    color: #adb5bd;
+    text-decoration: line-through;
+}
+
+/* === Кнопки действий === */
+.card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+}
+
+.collection-card:hover .card-actions {
+    opacity: 1;
+}
+
+.action-btn {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+    background: #e7f1ff;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.action-btn.active {
+    background: #f8d7da;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.action-btn.delete:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+/* === Items (для категорий) === */
 .sidebar-item {
     display: flex;
     align-items: center;
@@ -556,8 +833,7 @@ export default {
 }
 
 /* === Actions (появляются при hover) === */
-.item-actions,
-.btn-delete {
+.item-actions {
     display: flex;
     gap: 4px;
     opacity: 0;
@@ -565,8 +841,7 @@ export default {
     flex-shrink: 0;
 }
 
-.sidebar-item:hover .item-actions,
-.sidebar-item:hover .btn-delete {
+.sidebar-item:hover .item-actions {
     opacity: 1;
 }
 
@@ -574,8 +849,7 @@ export default {
     display: none;
 }
 
-.btn-action,
-.btn-delete {
+.btn-action {
     width: 24px;
     height: 24px;
     border: none;
@@ -594,14 +868,12 @@ export default {
     color: #0d6efd;
 }
 
-.btn-action.danger:hover,
-.btn-delete:hover {
+.btn-action.danger:hover {
     background: #f8d7da;
     color: #dc3545;
 }
 
-.btn-action i,
-.btn-delete i {
+.btn-action i {
     font-size: 11px;
 }
 
@@ -663,6 +935,29 @@ export default {
 
 .btn-create i {
     font-size: 12px;
+}
+
+.btn-preset {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid #6f42c1;
+    border-radius: 8px;
+    background: transparent;
+    color: #6f42c1;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: 8px;
+}
+
+.btn-preset:hover {
+    background: #6f42c1;
+    color: #fff;
 }
 
 /* === Modals === */
@@ -746,40 +1041,6 @@ export default {
     flex-shrink: 0;
 }
 
-.form-group {
-    margin-bottom: 16px;
-}
-
-.form-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: #495057;
-    margin-bottom: 6px;
-}
-
-.form-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    font-size: 14px;
-    color: #212529;
-    background: #fff;
-    transition: all 0.15s ease;
-    outline: none;
-    font-family: inherit;
-}
-
-.form-input:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
-}
-
-textarea.form-input {
-    resize: vertical;
-}
-
 .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -801,27 +1062,6 @@ textarea.form-input {
 
 .btn-cancel:hover {
     background: #f8f9fa;
-}
-
-.btn-save {
-    padding: 8px 20px;
-    border: none;
-    border-radius: 8px;
-    background: #0d6efd;
-    color: #fff;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.btn-save:hover:not(:disabled) {
-    background: #0b5ed7;
-}
-
-.btn-save:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .btn-delete-confirm {
@@ -883,28 +1123,9 @@ textarea.form-input {
     .segment-btn {
         padding: 8px;
     }
-}
 
-.btn-preset {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 16px;
-    border: 1px solid #6f42c1;
-    border-radius: 8px;
-    background: transparent;
-    color: #6f42c1;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    margin-bottom: 8px;
-}
-
-.btn-preset:hover {
-    background: #6f42c1;
-    color: #fff;
+    .card-actions {
+        opacity: 1;
+    }
 }
 </style>
