@@ -79,7 +79,7 @@ class CollectionController extends Controller
         return response()->json($collection->load('products'), 201);
     }
 
-    public function update(Request $request, Collection $collection)
+    public function update(Request $request, $workspaceUuid, Collection $collection)
     {
         $workspace = App::make('workspace');
 
