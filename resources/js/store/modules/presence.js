@@ -12,21 +12,52 @@ export default {
     }),
 
     actions: {
-        generateUserKey() {
-            // Генерируем стабильный ключ для сессии
-            let key = sessionStorage.getItem('presence_user_key')
-            if (!key) {
-                key = 'session_' + Math.random().toString(36).substring(2, 15)
-                sessionStorage.setItem('presence_user_key', key)
+        // ✅ Стабильный browser_id — один на все вкладки браузера
+        getBrowserId() {
+            const STORAGE_KEY = 'workspace_browser_id'
+
+            let browserId = localStorage.getItem(STORAGE_KEY)
+
+            if (!browserId) {
+                // Генерируем один раз и сохраняем навсегда
+                browserId = 'browser_' + this.generateFingerprint()
+                localStorage.setItem(STORAGE_KEY, browserId)
             }
-            return key
+
+            return browserId
         },
+
+        // ✅ Fingerprint на основе характеристик браузера
+        generateFingerprint() {
+            const components = [
+                navigator.userAgent,
+                navigator.language,
+                screen.width + 'x' + screen.height,
+                screen.colorDepth,
+                new Date().getTimezoneOffset(),
+                navigator.hardwareConcurrency || 'unknown',
+                navigator.platform || 'unknown',
+            ]
+
+            const str = components.join('|')
+
+            // Простой хэш
+            let hash = 0
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i)
+                hash = ((hash << 5) - hash) + char
+                hash = hash & hash // Convert to 32bit integer
+            }
+
+            return Math.abs(hash).toString(36) + '_' + Date.now().toString(36)
+        },
+
         startPresenceTracking() {
             if (this.isTracking) return
             this.isTracking = true
 
             // ✅ Сохраняем текущий user_key
-            this.currentUserKey = this.generateUserKey()
+            this.currentUserKey = this.getBrowserId()
 
             // Сразу шлём heartbeat
             this.sendHeartbeat()

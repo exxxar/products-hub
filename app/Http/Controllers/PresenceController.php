@@ -15,14 +15,25 @@ class PresenceController extends Controller
     public function heartbeat(Request $request)
     {
         $workspace = App::make('workspace');
-        $userKey = $request->user()?->id ?? 'session_' . session()->getId();
-        $userKey = $request->user()?->id ?? 'session_' . session()->getId();
+
+        $browserId = $request->input('browser_id');
+
+        if (!$browserId) {
+            // Fallback — если браузер_id не пришёл
+            $browserId = 'ip_' . md5($request->ip() . $request->userAgent());
+        }
+
+        // ✅ Удаляем старые записи с тем же browser_id (могли остаться)
+        WorkspacePresence::where('workspace_id', $workspace->id)
+            ->where('user_key', $browserId)
+            ->delete();
+
         $ipAddress = $request->ip();
 
         WorkspacePresence::updateOrCreate(
             [
                 'workspace_id' => $workspace->id,
-                'user_key' => $userKey,
+                'user_key' => $browserId,
             ],
             [
                 'user_name' => $request->user()?->name ?? 'Гость',
@@ -48,9 +59,11 @@ class PresenceController extends Controller
     /**
      * Список онлайн-пользователей
      */
-    public function users()
+    public function users(Request $request)
     {
         $workspace = App::make('workspace');
+
+        $currentUserKey = $request->input('browser_id') ?? 'ip_' . md5(request()->ip() . request()->userAgent());
 
         $users = WorkspacePresence::where('workspace_id', $workspace->id)
             ->where('last_seen', '>=', now()->subSeconds(60))
@@ -65,6 +78,7 @@ class PresenceController extends Controller
                 'browser' => $p->browser,
                 'last_seen' => $p->last_seen->toIso8601String(),
                 'idle_seconds' => $p->last_seen->diffInSeconds(now()),
+                'is_you' => $p->user_key === $currentUserKey,
             ]);
 
         return response()->json([
@@ -79,10 +93,10 @@ class PresenceController extends Controller
     public function leave()
     {
         $workspace = App::make('workspace');
-        $userKey = request()->user()?->id ?? 'session_' . session()->getId();
+        $browserId = request()->input('browser_id');
 
         WorkspacePresence::where('workspace_id', $workspace->id)
-            ->where('user_key', $userKey)
+            ->where('user_key', $browserId)
             ->delete();
 
         return response()->json(['success' => true]);

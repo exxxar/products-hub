@@ -12,6 +12,7 @@ class CleanupPresence extends Command
 
     public function handle(): int
     {
+        // Удаляем записи старше 2 минут
         $deleted = WorkspacePresence::where('last_seen', '<', now()->subMinutes(2))
             ->delete();
 

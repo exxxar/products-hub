@@ -74,11 +74,11 @@
                                         <span>{{ user.ip_address }} </span>
                                     </div>
 
-                                    <div v-if="user.browser" class="user-browser">
-                                        <i class="fa-brands fa-chrome"></i>
-                                        <span>{{user.device_type}}, {{user.browser}}</span>
-                                    </div>
 
+                                    <div v-if="user.browser && user.browser !== 'unknown'" class="user-device">
+                                        <i :class="getDeviceIcon(user.device_type)"></i>
+                                        <span>{{ user.browser }} · {{ formatDevice(user.device_type) }}</span>
+                                    </div>
 
                                 </div>
                                 <div v-if="user.page && user.page !== 'workspace'" class="user-page">
@@ -136,6 +136,23 @@ export default {
     },
 
     methods: {
+        getDeviceIcon(deviceType) {
+            const icons = {
+                mobile: 'fa-solid fa-mobile-screen',
+                tablet: 'fa-solid fa-tablet-screen-button',
+                desktop: 'fa-solid fa-desktop',
+            }
+            return icons[deviceType] || 'fa-solid fa-circle'
+        },
+
+        formatDevice(deviceType) {
+            const labels = {
+                mobile: 'Мобильный',
+                tablet: 'Планшет',
+                desktop: 'Компьютер',
+            }
+            return labels[deviceType] || 'Неизвестно'
+        },
         showModal() {
             if (this.modal) {
                 this.modal.show()
@@ -585,20 +602,20 @@ export default {
     color: #adb5bd;
 }
 
-/* === IP адрес === */
-.user-browser {
+
+/* === Устройство и браузер === */
+.user-device {
     display: flex;
     align-items: center;
     gap: 4px;
     margin-top: 3px;
     font-size: 10px;
     color: #6c757d;
-    font-family: 'Courier New', monospace;
 }
 
-.user-browser i {
-    font-size: 9px;
-    color: #adb5bd;
+.user-device i {
+    font-size: 10px;
+    color: #0d6efd;
 }
 
 </style>
