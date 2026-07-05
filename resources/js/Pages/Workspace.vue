@@ -314,22 +314,22 @@ export default {
         settingsData() {
 
             return {
-                name: this.item.name || '',
-                label: this.item.name || '',
-                description: this.item.description || '',
-                url: this.item.url || this.item.settings?.url || '',
+                name: this.store.name || '',
+                label: this.store.name || '',
+                description: this.store.description || '',
+                url: this.store.url || this.store.settings?.url || '',
                 visual: {
-                    label: this.item.label || '',
-                    color: this.item.color || '#0d6efd',
-                    logo_url: this.item.logo_url || null
+                    label: this.store.settings.visual.label || '',
+                    color: this.store.color || '#0d6efd',
+                    logo_url: this.store.logo_url || null
                 },
-                vk_shop_links: this.item.settings?.vk_shop_links || '',
-                iiko: this.item.settings?.iiko || {
+                vk_shop_links: this.store.settings?.vk_shop_links || '',
+                iiko: this.store.settings?.iiko || {
                     api_login: '',
                     organization_id: '',
                     terminal_group_id: ''
                 },
-                frontpad: this.item.settings?.frontpad || {
+                frontpad: this.store.settings?.frontpad || {
                     secret: ''
                 }
             }
@@ -485,7 +485,11 @@ export default {
 
             console.log("Workspace", this.workspace)
             // Инициализируем store
+            this.store.setName(this.item.name)
+            this.store.setDescription(this.item.description)
+            this.store.setLogoUrl(this.item.logo_url)
             this.store.setUuid(this.item.uuid)
+            this.store.setColor(this.item.color)
             this.store.setAccessToken(this.item.access_token)
             this.store.setSettings(this.item.settings)
             this.store.setProducts(this.item.products || [])

@@ -571,23 +571,23 @@ export default {
         // ✅ Новый метод — берём данные из store
         initFromStore() {
 
-            console.log(this.modelValue)
+
             const data = {
-                name: this.modelValue.name || '',
-                description: this.modelValue.description || '',
-                url: this.modelValue.url || '',
+                name: this.store.name || '',
+                description: this.store.description || '',
+                url: this.store.url || '',
                 visual: {
-                    label: this.modelValue.visual?.label || '',
-                    color: this.modelValue.visual?.color || '#0d6efd',
-                    logo_url: this.modelValue.visual?.logo_url || null
+                    label: this.store.settings?.visual?.label || '',
+                    color: this.store.color || '#0d6efd',
+                    logo_url: this.store.logo_url || null
                 },
-                vk_shop_links: this.modelValue.settings?.vk_shop_links || '',
-                iiko: this.modelValue.settings?.iiko || {
+                vk_shop_links: this.store.settings?.vk_shop_links || '',
+                iiko: this.store.settings?.iiko || {
                     api_login: '',
                     organization_id: '',
                     terminal_group_id: ''
                 },
-                frontpad: this.modelValue.settings?.frontpad || {
+                frontpad: this.store.settings?.frontpad || {
                     secret: ''
                 }
             }

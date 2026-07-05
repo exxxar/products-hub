@@ -3,7 +3,7 @@
         <!-- Текущая доска -->
         <button type="button" class="current-workspace" @click="togglePanel">
             <div class="workspace-icon" :style="{ background: store.workspaceColor }">
-                <img v-if="store.workspaceLogo" :src="store.workspaceLogo" alt="" />
+                <img v-if="store.logo_url" :src="store.workspaceLogo" alt="" />
                 <span v-else>{{ store.workspaceInitials }}</span>
             </div>
             <div class="workspace-info">

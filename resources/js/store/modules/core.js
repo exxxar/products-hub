@@ -4,6 +4,10 @@ export default {
     state: () => ({
         uuid: null,
         name: '',
+        description: '',
+        logo_url: '',
+        url: '',
+        color: '',
         settings: {},
         isLoading: false,
         error: null,
@@ -14,8 +18,22 @@ export default {
         setUuid(uuid) {
             this.uuid = uuid
         },
+        setUrl(url) {
+            this.url = url
+        },
+        setColor(color) {
+            this.color = color
+        },
 
-
+        setName(name) {
+            this.name = name || ''
+        },
+        setDescription(description) {
+            this.description = description || ''
+        },
+        setLogoUrl(url) {
+            this.logo_url = url || ''
+        },
         setSettings(settings) {
             this.settings = settings || {}
         },
