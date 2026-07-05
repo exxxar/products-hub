@@ -66,7 +66,31 @@ class WorkspaceController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'label' => 'nullable|string|max:3',
+            'color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        ]);
+
+        $workspace = Workspace::create([
+            'uuid' => Str::uuid()->toString(),
+            'name' => $validated['name'],
+            'settings' => [
+                'visual' => [
+                    'label' => $validated['label'] ?? null,
+                    'color' => $validated['color'] ?? '#0d6efd',
+                ],
+            ],
+        ]);
+
+        return response()->json([
+            'id' => $workspace->id,
+            'uuid' => $workspace->uuid,
+            'name' => $workspace->name,
+            'label' => $workspace->label,
+            'color' => $workspace->color,
+            'initials' => $workspace->initials,
+        ], 201);
     }
 
 

@@ -12,6 +12,7 @@ import menu from './modules/menu'
 import master from './modules/master'
 import activity from './modules/activity'
 import presence from './modules/presence'
+import wLinked from './modules/workspace-linked.js'
 
 /**
  * Объединяет модули в единую структуру store
@@ -20,7 +21,8 @@ function mergeModules(...modules) {
     const merged = {
         state: () => ({}),
         getters: {},
-        actions: {},
+        actions: {
+        },
     }
 
     for (const mod of modules) {
@@ -59,6 +61,7 @@ const merged = mergeModules(
     master,
     activity,
     presence,
+    wLinked,
     importExport
 )
 

@@ -9,9 +9,12 @@ use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WebhookController;
 
+use App\Http\Controllers\WorkspaceGroupController;
+use App\Http\Controllers\WorkspaceLinkController;
 use App\Http\Controllers\WorkspaceTokenController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\WorkspaceVisualController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WorkspaceController;
 
@@ -25,6 +28,9 @@ use App\Http\Controllers\IngredientController;
 | Workspace
 |--------------------------------------------------------------------------
 */
+
+Route::post('/workspaces', [WorkspaceController::class, 'store']);
+
 Route::prefix('workspaces/{uuid}')
     ->group(function () {
 // Основная загрузка панели
@@ -34,6 +40,32 @@ Route::prefix('workspaces/{uuid}')
 Route::prefix('workspaces/{uuid}')
     ->middleware(["workspace.auth"])
     ->group(function () {
+
+        Route::prefix('workspace')
+            ->group(function () {
+                Route::get('/linked', [WorkspaceLinkController::class, 'index']);
+                Route::post('/link', [WorkspaceLinkController::class, 'link'])->middleware('master.unlocked');
+                Route::post('/unlink', [WorkspaceLinkController::class, 'unlink'])->middleware('master.unlocked');
+                Route::post('/create-and-link', [WorkspaceLinkController::class, 'createAndLink'])->middleware('master.unlocked');
+                Route::post('/find-by-uuid', [WorkspaceLinkController::class, 'findByUuid']);
+
+                Route::put('/visual', [WorkspaceVisualController::class, 'updateVisual'])->middleware('master.unlocked');
+                Route::post('/logo', [WorkspaceVisualController::class, 'uploadLogo'])->middleware('master.unlocked');
+                Route::delete('/logo', [WorkspaceVisualController::class, 'removeLogo'])->middleware('master.unlocked');
+                Route::put('/toggle-groups', [WorkspaceVisualController::class, 'toggleGroups'])->middleware('master.unlocked');
+               // Route::get('/all', [WorkspaceGroupController::class, 'allWorkspaces']);
+            });
+
+
+        Route::prefix('workspace-groups')
+            ->group(function () {
+                // Группы workspace
+                Route::get('/', [WorkspaceGroupController::class, 'index']);
+                Route::post('/', [WorkspaceGroupController::class, 'store'])->middleware('master.unlocked');
+                Route::put('/{group}', [WorkspaceGroupController::class, 'update'])->middleware('master.unlocked');
+                Route::delete('/{group}', [WorkspaceGroupController::class, 'destroy'])->middleware('master.unlocked');
+                Route::post('/{group}/logo', [WorkspaceGroupController::class, 'uploadLogo'])->middleware('master.unlocked');
+            });
 
         Route::post("/refresh-session", [HomeController::class, "refreshSession"]);
         // ->middleware('throttle:refresh-sessions');

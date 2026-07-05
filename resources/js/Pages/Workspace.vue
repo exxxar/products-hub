@@ -4,7 +4,11 @@
 
         <NotifyContainer/>
 
-
+        <div class="workspace-topbar">
+            <WorkspaceSwitcher
+                @open-create-group="openCreateGroup"
+                @open-create-workspace="openCreateWorkspace"
+            />
         <TopMenu
             :viewMode="viewMode"
             @change-view="viewMode = $event"
@@ -15,6 +19,7 @@
             @toggle-sidebar="needSidebar = $event"
             @open-menu-generator="openMenuGenerator"
         />
+        </div>
 
         <!-- Модалка авторизации -->
         <PasswordModal
@@ -155,6 +160,11 @@
             @save="saveCollection"
         />
 
+        <WorkspaceCreateModal
+            ref="workspaceCreateModal"
+            @created="onWorkspaceCreated"
+        />
+
 
         <!-- Модалка товаров коллекции -->
         <CollectionProductsModal
@@ -200,28 +210,12 @@
         <div class="online-badge-fixed-container">
             <OnlineBadge />
         </div>
-        <!-- PWA установка -->
-        <div class="modal fade" id="installPwaModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">
-                            <i class="fa-solid fa-download me-2"></i>Установить приложение
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Вы можете установить Агрегатор товаров как приложение и запускать его прямо с рабочего стола.</p>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">Позже</button>
-                        <button class="btn btn-primary" @click="installPWA">
-                            <i class="fa-solid fa-download me-2"></i>Установить
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+
+        <!-- Модалка -->
+        <PwaInstallModal
+            ref="pwaInstallModal"
+            @install="handleInstall"
+        />
     </div>
 </template>
 
@@ -246,14 +240,21 @@ import MenuConfiguratorModal from '../components/Menu/MenuConfiguratorModal.vue'
 import ActivityLogPanel from '@/Components/Layout/ActivityLogPanel.vue'
 import CollectionProductsModal from '@/Components/Collections/CollectionProductsModal.vue'
 
+import WorkspaceSwitcher from '@/Components/Groups/WorkspaceSwitcher.vue'
+import WorkspaceCreateModal from '@/Components/Groups/WorkspaceCreateModal.vue'
+import PwaInstallModal from '@/Components/Layout/PwaInstallModal.vue'
+
 export default {
     name: 'Workspace',
 
     components: {
+        PwaInstallModal,
         NotifyContainer,
+        WorkspaceSwitcher,
         TopMenu,
         OnlineBadge,
         MenuConfiguratorModal,
+        WorkspaceCreateModal,
         CategoryPresetsModal,
         ProductGrid,
         ProductTable,
@@ -281,6 +282,8 @@ export default {
 
     data() {
         return {
+
+            deferredPrompt: null,
             showActivityLog: false,
             workspace: null,
             needPassword: false,
@@ -324,11 +327,48 @@ export default {
         this.handleVKCallback()
 
         this.store.startPresenceTracking()
+
+        if (this.store.groupsEnabled) {
+            Promise.all([
+                this.store.loadAllWorkspaces(),
+                this.store.loadWorkspaceGroups(),
+            ])
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault()
+            this.deferredPrompt = e
+
+            //this.showInstallModal()
+            // Показываем модалку автоматически через 5 секунд
+            setTimeout(() => {
+                if (!localStorage.getItem('pwa_install_dismissed')) {
+                    this.showInstallModal()
+                }
+            }, 5000)
+        })
     },
     beforeUnmount() {
         this.store.stopPresenceTracking()
     },
     methods: {
+        openCreateGroup() {
+            this.$refs.workspaceGroupModal.show()
+        },
+
+        openCreateWorkspace() {
+            this.$refs.workspaceCreateModal.show()
+        },
+
+        async onGroupSaved() {
+            await this.store.loadWorkspaceGroups()
+            await this.store.loadAllWorkspaces()
+        },
+
+        async onWorkspaceCreated(workspace) {
+            // Переход на новую доску
+            this.store.switchWorkspace(workspace.uuid)
+        },
         openActivityLog() {
             this.showActivityLog = true
         },
@@ -450,12 +490,23 @@ export default {
         async onCollectionSaved() {
             await this.store.loadCollections()
         },
-        // === PWA ===
-        installPWA() {
-            if (typeof window.installPWA === 'function') {
-                window.installPWA()
-            } else {
-                console.warn('PWA installation not available')
+        showInstallModal() {
+            this.$refs.pwaInstallModal.show()
+        },
+
+        async handleInstall() {
+            if (this.deferredPrompt) {
+                this.deferredPrompt.prompt()
+                const { outcome } = await this.deferredPrompt.userChoice
+
+                if (outcome === 'accepted') {
+                    this.$notify?.success({
+                        title: 'Приложение установлено',
+                        message: 'Теперь вы можете запускать его с рабочего стола'
+                    })
+                }
+
+                this.deferredPrompt = null
             }
         },
 
@@ -675,6 +726,16 @@ export default {
 </script>
 
 <style scoped>
+
+.workspace-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e9ecef;
+}
+
 .workspace-container {
     min-height: 100vh;
     display: flex;
