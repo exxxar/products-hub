@@ -57,7 +57,6 @@ class WorkspaceVisualController extends Controller
         $workspace->logo_path = $path;
         $workspace->save();
 
-        dd($workspace);
         return response()->json([
             'logo_url' => Storage::url($path),
             'logo_path' => $path,
