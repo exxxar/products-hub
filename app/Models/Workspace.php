@@ -12,7 +12,7 @@ class Workspace extends Model
     protected $fillable = [
         'uuid', 'name', 'settings',
         'logo_path', 'label', 'color', 'is_archived', // ✅ Новые поля
-        'master_code_hash', 'master_code_attempts', 'master_code_locked_until',
+        'master_code_hash', 'master_code_attempts', 'master_code_locked_until', "description" ,"url"
     ];
 
     protected $casts = [
@@ -112,10 +112,6 @@ class Workspace extends Model
 
     // === Визуальные поля (через settings) ===
 
-    public function getLogoPathAttribute(): ?string
-    {
-        return $this->getSetting('visual.logo_path');
-    }
 
     public function getLogoUrlAttribute(): ?string
     {
@@ -334,5 +330,19 @@ class Workspace extends Model
     {
         $linked = $this->getSetting('linked_workspaces', []);
         return in_array($uuid, $linked);
+    }
+
+    // В модели Workspace.php
+
+
+
+    public function getDescriptionAttribute(): ?string
+    {
+        return $this->attributes['description'] ?? null;
+    }
+
+    public function getUrlAttribute(): ?string
+    {
+        return $this->attributes['url'] ?? null;
     }
 }

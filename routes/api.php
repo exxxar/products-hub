@@ -41,6 +41,8 @@ Route::prefix('workspaces/{uuid}')
     ->middleware(["workspace.auth"])
     ->group(function () {
 
+        Route::put('/', [WorkspaceController::class, 'update'])->middleware('master.unlocked');
+
         Route::prefix('workspace')
             ->group(function () {
                 Route::get('/linked', [WorkspaceLinkController::class, 'index']);
@@ -57,15 +59,6 @@ Route::prefix('workspaces/{uuid}')
             });
 
 
-        Route::prefix('workspace-groups')
-            ->group(function () {
-                // Группы workspace
-                Route::get('/', [WorkspaceGroupController::class, 'index']);
-                Route::post('/', [WorkspaceGroupController::class, 'store'])->middleware('master.unlocked');
-                Route::put('/{group}', [WorkspaceGroupController::class, 'update'])->middleware('master.unlocked');
-                Route::delete('/{group}', [WorkspaceGroupController::class, 'destroy'])->middleware('master.unlocked');
-                Route::post('/{group}/logo', [WorkspaceGroupController::class, 'uploadLogo'])->middleware('master.unlocked');
-            });
 
         Route::post("/refresh-session", [HomeController::class, "refreshSession"]);
         // ->middleware('throttle:refresh-sessions');
@@ -73,6 +66,7 @@ Route::prefix('workspaces/{uuid}')
         // Настройки
         Route::prefix('settings')->group(function () {
             Route::post('/', [SettingsController::class, 'save'])->middleware('master.unlocked');
+
             Route::post('/webhook/test', [SettingsController::class, 'test']);
 
         });

@@ -9,16 +9,16 @@
                 @open-create-group="openCreateGroup"
                 @open-create-workspace="openCreateWorkspace"
             />
-        <TopMenu
-            :viewMode="viewMode"
-            @change-view="viewMode = $event"
-            @open-import="openImport"
-            @open-collection="openCollection"
-            @open-webhook="openWebhook"
-            @export-vk="exportToVk"
-            @toggle-sidebar="needSidebar = $event"
-            @open-menu-generator="openMenuGenerator"
-        />
+            <TopMenu
+                :viewMode="viewMode"
+                @change-view="viewMode = $event"
+                @open-import="openImport"
+                @open-collection="openCollection"
+                @open-webhook="openWebhook"
+                @export-vk="exportToVk"
+                @toggle-sidebar="needSidebar = $event"
+                @open-menu-generator="openMenuGenerator"
+            />
         </div>
 
         <!-- Модалка авторизации -->
@@ -116,7 +116,7 @@
                                     <h6 class="category-name">{{ cat.name }}</h6>
                                     <span class="category-count">
 
-                                  {{cat.products_count}} товаров
+                                  {{ cat.products_count }} товаров
                             </span>
                                 </div>
 
@@ -145,7 +145,7 @@
         </div>
 
         <!-- ✅ Footer -->
-        <WorkspaceFooter />
+        <WorkspaceFooter/>
         <!-- Модалки -->
         <ProductModal
             ref="productModal"
@@ -181,10 +181,10 @@
             @import="importProducts"
         />
 
-        <WebhookSettingsModal
+        <SettingsModal
             ref="webhookModal"
-            :modelValue="webhook"
-            @save="saveWebhook"
+            :modelValue="settingsData"
+            @save="handleSaveSettings"
             @open-activity-log="openActivityLog"
             @test="testWebhook"
         />
@@ -208,10 +208,10 @@
             />
         </Transition>
 
-        <MenuConfiguratorModal ref="menuGeneratorModal" />
+        <MenuConfiguratorModal ref="menuGeneratorModal"/>
 
         <div class="online-badge-fixed-container">
-            <OnlineBadge />
+            <OnlineBadge/>
         </div>
 
         <!-- Модалка -->
@@ -233,7 +233,7 @@ import ProductTable from '../Components/Products/ProductTable.vue'
 import ProductModal from '../Components/Products/ProductModal.vue'
 import CollectionModal from '../Components/Collections/CollectionFormModal.vue'
 import ImportModal from '../Components/Import/ImportModal.vue'
-import WebhookSettingsModal from '../Components/Layout/SettingsModal.vue'
+import SettingsModal from '../Components/Layout/SettingsModal.vue'
 
 import PasswordModal from '../Components/Auth/PasswordModal.vue'
 import {useWorkspaceStore} from '@/store/workspace.js'
@@ -249,6 +249,7 @@ import WorkspaceSwitcher from '@/Components/Groups/WorkspaceSwitcher.vue'
 import WorkspaceCreateModal from '@/Components/Groups/WorkspaceCreateModal.vue'
 import PwaInstallModal from '@/Components/Layout/PwaInstallModal.vue'
 import WorkspaceFooter from '@/Components/Layout/WorkspaceFooter.vue'
+
 export default {
     name: 'Workspace',
 
@@ -270,7 +271,7 @@ export default {
         CollectionProductsModal,
         ImportModal,
         CategoryModal,
-        WebhookSettingsModal,
+        SettingsModal,
         PasswordModal,
         ActivityLogPanel
 
@@ -310,7 +311,29 @@ export default {
         store() {
             return useWorkspaceStore()
         },
+        settingsData() {
 
+            return {
+                name: this.item.name || '',
+                label: this.item.name || '',
+                description: this.item.description || '',
+                url: this.item.url || this.item.settings?.url || '',
+                visual: {
+                    label: this.item.label || '',
+                    color: this.item.color || '#0d6efd',
+                    logo_url: this.item.logo_url || null
+                },
+                vk_shop_links: this.item.settings?.vk_shop_links || '',
+                iiko: this.item.settings?.iiko || {
+                    api_login: '',
+                    organization_id: '',
+                    terminal_group_id: ''
+                },
+                frontpad: this.item.settings?.frontpad || {
+                    secret: ''
+                }
+            }
+        },
 
         displayProducts() {
             if (this.selectedCollection) {
@@ -503,7 +526,7 @@ export default {
         async handleInstall() {
             if (this.deferredPrompt) {
                 this.deferredPrompt.prompt()
-                const { outcome } = await this.deferredPrompt.userChoice
+                const {outcome} = await this.deferredPrompt.userChoice
 
                 if (outcome === 'accepted') {
                     this.$notify?.success({
@@ -616,7 +639,7 @@ export default {
             }
         },
 
-        async fastCreateNewCategory(name){
+        async fastCreateNewCategory(name) {
             await this.saveCategory({
                 name: name
             })
@@ -636,7 +659,7 @@ export default {
             if (!categoryId)
                 return null;
 
-            return this.store.products.filter(p => p.categories.findIndex(sc=>sc.id === categoryId) !==-1 )
+            return this.store.products.filter(p => p.categories.findIndex(sc => sc.id === categoryId) !== -1)
         },
 
         getCategoryProductCount(categoryId) {
@@ -656,7 +679,7 @@ export default {
 
             if (collection) {
                 // Открываем модалку с товарами коллекции
-               await this.$refs.collectionProductsModal.show(collection)
+                await this.$refs.collectionProductsModal.show(collection)
             }
         },
 
@@ -711,13 +734,40 @@ export default {
             }
         },
 
-        async saveWebhook(data) {
+        async handleSaveSettings(formData) {
+
             try {
-                await this.store.saveWebhook(data)
-                this.webhook = data
+                // Сохраняем базовую информацию
+                await axios.put(`/api/workspaces/${this.store.uuid}`, {
+                    name: formData.name,
+                    description: formData.description,
+                    url: formData.url,
+                    settings: {
+                        ...this.store.settings,
+                        visual: formData.visual,
+                        vk_shop_links: formData.vk_shop_links,
+                        iiko: formData.iiko,
+                        frontpad: formData.frontpad
+                    }
+                })
+
+                // Обновляем локальное состояние
+                this.store.name = formData.name
+                this.store.description = formData.description
+                this.store.settings = {
+                    ...this.store.settings,
+                    visual: formData.visual,
+                    vk_shop_links: formData.vk_shop_links,
+                    iiko: formData.iiko,
+                    frontpad: formData.frontpad
+                }
+
+                this.$notify?.success('Настройки сохранены')
             } catch (error) {
-                console.error('Save webhook failed:', error)
+                console.error('Save settings failed:', error)
+                this.$notify?.error('Ошибка при сохранении настроек')
             }
+
         },
 
         async testWebhook(data) {
@@ -1077,8 +1127,12 @@ export default {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .slide-right-enter-active,
@@ -1094,7 +1148,7 @@ export default {
 .online-badge-fixed-container {
     width: 150px;
     position: fixed;
-    bottom:50px;
+    bottom: 50px;
     right: 20px;
 }
 </style>

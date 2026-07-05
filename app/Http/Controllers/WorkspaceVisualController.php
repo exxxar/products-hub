@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
@@ -37,9 +38,11 @@ class WorkspaceVisualController extends Controller
     /**
      * Загрузка логотипа
      */
-    public function uploadLogo(Request $request)
+    public function uploadLogo(Request $request, $worksapceUuid)
     {
-        $workspace = App::make('workspace');
+        $workspace = Workspace::query()
+            ->where("uuid", $worksapceUuid)
+            ->firstOrFail();
 
         $request->validate(['logo' => 'required|image|mimes:jpeg,png,jpg,svg|max:1024']);
 
@@ -51,9 +54,10 @@ class WorkspaceVisualController extends Controller
 
         $path = $request->file('logo')->store('workspace-logos/' . $workspace->id, 'public');
 
-        // ✅ Сохраняем путь в settings
-        $workspace->setSetting('visual.logo_path', $path);
+        $workspace->logo_path = $path;
+        $workspace->save();
 
+        dd($workspace);
         return response()->json([
             'logo_url' => Storage::url($path),
             'logo_path' => $path,

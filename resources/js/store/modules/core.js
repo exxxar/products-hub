@@ -7,6 +7,7 @@ export default {
         settings: {},
         isLoading: false,
         error: null,
+
     }),
 
     actions: {
@@ -18,7 +19,22 @@ export default {
         setSettings(settings) {
             this.settings = settings || {}
         },
+        async uploadWorkspaceLogo(file) {
+            const formData = new FormData()
+            formData.append('logo', file)
 
+            try {
+                const response = await axios.post(
+                    `/api/workspaces/${this.uuid}/workspace/logo`,
+                    formData,
+                    { headers: { 'Content-Type': 'multipart/form-data' } }
+                )
+                return response.data
+            } catch (error) {
+                console.error('Upload logo failed:', error)
+                throw error
+            }
+        },
         async loadWorkspace() {
             this.isLoading = true
             this.error = null

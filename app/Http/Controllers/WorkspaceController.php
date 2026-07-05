@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\ProductsExport;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -44,6 +45,7 @@ class WorkspaceController extends Controller
 
         return redirect('/workspace/' . $workspace->uuid);
     }
+
 
     /**
      * Display a listing of the resource.
@@ -106,9 +108,41 @@ class WorkspaceController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Workspace $workspace)
+    public function update(Request $request)
     {
-        //
+        $workspace = App::make('workspace');
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'description' => 'nullable|string|max:500',
+            'url' => 'nullable|url',
+            'settings' => 'nullable|array',
+        ]);
+
+        $updateData = [];
+
+        if (isset($validated['name'])) {
+            $updateData['name'] = $validated['name'];
+        }
+
+        if (isset($validated['description'])) {
+            $updateData['description'] = $validated['description'];
+        }
+
+        if (isset($validated['url'])) {
+            $updateData['url'] = $validated['url'];
+        }
+
+        if (isset($validated['settings'])) {
+            $updateData['settings'] = array_merge($workspace->settings ?? [], $validated['settings']);
+        }
+
+        $workspace->update($updateData);
+
+        return response()->json([
+            'success' => true,
+            'workspace' => $workspace->fresh(),
+        ]);
     }
 
     /**

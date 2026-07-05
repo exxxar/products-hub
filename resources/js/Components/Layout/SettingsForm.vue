@@ -1,4 +1,6 @@
 <template>
+
+
     <form class="settings-form" @submit.prevent="save">
         <!-- Tabs -->
         <div class="settings-tabs">
@@ -17,12 +19,156 @@
 
         <!-- Base Tab -->
         <div v-if="activeTab === 'base'" class="tab-content">
+            <!-- ✅ Информация о workspace -->
+            <div class="section-header">
+                <h6 class="section-title">
+                    <i class="fa-solid fa-circle-info"></i>
+                    Информация о workspace
+                </h6>
+                <p class="section-desc">
+                    Основные параметры вашей рабочей области
+                </p>
+            </div>
 
+            <div class="field-group">
+                <label class="field-label">Название workspace *</label>
+                <input
+                    v-model="localForm.name"
+                    type="text"
+                    class="form-input"
+                    placeholder="Например: Магазин одежды"
+                    maxlength="255"
+                />
+            </div>
 
+            <div class="field-group">
+                <label class="field-label">Описание</label>
+                <textarea
+                    v-model="localForm.description"
+                    class="form-input form-textarea"
+                    placeholder="Краткое описание вашего workspace..."
+                    rows="3"
+                    maxlength="500"
+                ></textarea>
+                <small class="field-hint">
+                    <i class="fa-solid fa-circle-info"></i>
+                    {{ localForm.description?.length || 0 }} / 500 символов
+                </small>
+            </div>
+
+            <div class="field-group">
+                <label class="field-label">URL сайта</label>
+                <input
+                    v-model="localForm.url"
+                    type="url"
+                    class="form-input"
+                    placeholder="https://example.com"
+                />
+                <div v-if="urlError" class="field-error">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    {{ urlError }}
+                </div>
+            </div>
+
+            <!-- Визуальные настройки -->
+            <div class="section-divider"></div>
+
+            <div class="section-header">
+                <h6 class="section-title">
+                    <i class="fa-solid fa-palette"></i>
+                    Визуальное оформление
+                </h6>
+                <p class="section-desc">
+                    Настройте внешний вид workspace
+                </p>
+            </div>
+
+            <div class="visual-settings-grid">
+                <!-- Логотип -->
+                <div class="field-group">
+                    <label class="field-label">Логотип</label>
+                    <div class="logo-upload-wrapper">
+                        <div v-if="logoPreview" class="logo-preview">
+                            <img :src="logoPreview" alt="Logo" />
+                            <button
+                                type="button"
+                                class="btn-remove-logo"
+                                @click="removeLogo"
+                                title="Удалить логотип"
+                            >
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <label v-else class="logo-upload-btn">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                @change="uploadLogo"
+                                style="display: none"
+                            />
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>Загрузить</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Цвет и метка -->
+                <div class="visual-fields">
+                    <div class="field-group">
+                        <label class="field-label">Цвет</label>
+                        <div class="color-picker">
+                            <input
+                                v-model="localForm.visual.color"
+                                type="color"
+                                class="color-input"
+                            />
+                            <input
+                                v-model="localForm.visual.color"
+                                type="text"
+                                class="form-input color-text"
+                                maxlength="7"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label">Метка (2-3 символа)</label>
+                        <input
+                            v-model="localForm.visual.label"
+                            type="text"
+                            class="form-input"
+                            placeholder="МС"
+                            maxlength="3"
+                        />
+                        <small class="field-hint">
+                            Отображается в иконке workspace
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Превью -->
+            <div class="workspace-preview">
+                <div class="preview-card">
+                    <div class="preview-icon" :style="{ background: localForm.visual.color }">
+                        <img v-if="logoPreview" :src="logoPreview" alt="" />
+                        <span v-else>{{ localForm.visual.label || localForm.name?.substring(0, 2) || 'WS' }}</span>
+                    </div>
+                    <div class="preview-info">
+                        <div class="preview-name">{{ localForm.name || 'Название workspace' }}</div>
+                        <div class="preview-desc" v-if="localForm.description">{{ localForm.description }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <!-- Вебхуки -->
             <WebhooksManager />
 
             <div class="section-divider"></div>
 
+            <!-- Сессия -->
             <div class="section-header">
                 <h6 class="section-title">
                     <i class="fa-solid fa-key"></i>
@@ -54,6 +200,8 @@
             </div>
 
             <div class="section-divider"></div>
+
+            <!-- Токены доступа -->
             <div class="section-header">
                 <h6 class="section-title">
                     <i class="fa-solid fa-key"></i>
@@ -65,8 +213,6 @@
             </div>
 
             <AccessLinkManager />
-
-
         </div>
 
         <!-- VK Tab -->
@@ -172,7 +318,7 @@
             </div>
         </div>
 
-        <!-- ✅ Linked Workspaces Tab -->
+        <!-- Linked Workspaces Tab -->
         <div v-if="activeTab === 'linked'" class="tab-content">
             <div class="section-header">
                 <h6 class="section-title">
@@ -184,7 +330,6 @@
                 </p>
             </div>
 
-            <!-- Как это работает -->
             <div class="info-box">
                 <i class="fa-solid fa-circle-info"></i>
                 <div>
@@ -195,14 +340,12 @@
                 </div>
             </div>
 
-            <!-- Загрузка -->
             <div v-if="isLoadingLinked" class="loading-state">
                 <i class="fa-solid fa-spinner fa-spin"></i>
                 <span>Загрузка связанных досок...</span>
             </div>
 
             <template v-else>
-                <!-- Список связанных -->
                 <div v-if="store.linkedWorkspaces.length > 0" class="linked-list">
                     <div
                         v-for="workspace in store.linkedWorkspaces"
@@ -241,14 +384,12 @@
                     </div>
                 </div>
 
-                <!-- Пустое состояние -->
                 <div v-else class="empty-linked">
                     <i class="fa-solid fa-link-slash"></i>
                     <p>Нет связанных досок</p>
                     <span>Добавьте существующую доску или создайте новую</span>
                 </div>
 
-                <!-- Кнопки действий -->
                 <div class="linked-actions-bar">
                     <button
                         type="button"
@@ -311,56 +452,57 @@
 
     <ConfirmModal
         v-model:show="showUnlinkConfirm"
-        title="Удалить из списка?"
-        :description="`Удалить доску ${workspaceToUnlink?.name} из списка связанных?`"
-    @accept="unlinkWorkspace"
-    @reject="showUnlinkConfirm = false"
+        title="Удалить связь?"
+        :description="`Удалить доску «${workspaceToUnlink?.name}» из связанных? Доска не будет удалена, только связь с ней.`"
+        @accept="unlinkWorkspace"
+        @reject="showUnlinkConfirm = false"
     />
 </template>
-
 <script>
 import WebhooksManager from './WebhooksManager.vue'
 import AccessLinkManager from './AccessLinkManager.vue'
-import {useWorkspaceStore} from "@/store/workspace.js";
-
 import CreateWorkspaceModal from '@/Components/Groups/WorkspaceCreateModal.vue'
 import AddWorkspaceModal from '@/Components/Groups/AddWorkspaceModal.vue'
-
 import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'
+import { useWorkspaceStore } from "@/store/workspace.js"
 
 export default {
     name: 'SettingsForm',
     components: {
+        WebhooksManager,
+        AccessLinkManager,
         CreateWorkspaceModal,
         AddWorkspaceModal,
-        ConfirmModal,
-        WebhooksManager,
-        AccessLinkManager
+        ConfirmModal
     },
     props: {
         modelValue: {
             type: Object,
             default: () => ({})
         },
-
     },
 
-    emits: ['update:modelValue', 'save', 'test','open-activity-log'],
+    emits: ['update:modelValue', 'save', 'test', 'open-activity-log'],
 
     data() {
         return {
             activeTab: 'base',
-            isLoadingLinked: false,
-
-            showUnlinkConfirm: false,
-            workspaceToUnlink: null,
-            searchQuery: '',
             isLoading: false,
+            isLoadingLinked: false,
             saveStatus: null,
             urlError: '',
+            showUnlinkConfirm: false,
+            workspaceToUnlink: null,
+            logoPreview: null,
 
             localForm: {
+                name: '',
+                description: '',
                 url: '',
+                visual: {
+                    label: '',
+                    color: '#0d6efd'
+                },
                 vk_shop_links: '',
                 iiko: {
                     api_login: '',
@@ -392,14 +534,24 @@ export default {
     },
 
     watch: {
+        // ✅ Следим за изменениями в store (актуальные данные workspace)
+        'store.name': {
+            handler(newVal) {
+                if (newVal && !this.localForm.name) {
+                    this.initFromStore()
+                }
+            },
+            immediate: true
+        },
         modelValue: {
             deep: true,
-            immediate: true,
             handler(newVal) {
-                this.fillForm(newVal)
+                // Заполняем только если есть реальные данные
+                if (newVal && (newVal.name || newVal.description || newVal.visual)) {
+                    this.fillForm(newVal)
+                }
             }
         },
-
         'localForm.url'(newVal) {
             this.validateUrl(newVal)
         },
@@ -410,12 +562,51 @@ export default {
         }
     },
 
+    mounted() {
+        // ✅ Инициализируем форму из store при монтировании
+        this.initFromStore()
+    },
+
     methods: {
+        // ✅ Новый метод — берём данные из store
+        initFromStore() {
+
+            console.log(this.modelValue)
+            const data = {
+                name: this.modelValue.name || '',
+                description: this.modelValue.description || '',
+                url: this.modelValue.url || '',
+                visual: {
+                    label: this.modelValue.visual?.label || '',
+                    color: this.modelValue.visual?.color || '#0d6efd',
+                    logo_url: this.modelValue.visual?.logo_url || null
+                },
+                vk_shop_links: this.modelValue.settings?.vk_shop_links || '',
+                iiko: this.modelValue.settings?.iiko || {
+                    api_login: '',
+                    organization_id: '',
+                    terminal_group_id: ''
+                },
+                frontpad: this.modelValue.settings?.frontpad || {
+                    secret: ''
+                }
+            }
+
+            this.fillForm(data)
+        },
+
         fillForm(data) {
             if (!data) return
 
+            this.localForm.name = data.name || ''
+            this.localForm.description = data.description || ''
             this.localForm.url = data.url || ''
             this.localForm.vk_shop_links = data.vk_shop_links || ''
+
+            this.localForm.visual = {
+                label: data.visual?.label || '',
+                color: data.visual?.color || '#0d6efd'
+            }
 
             this.localForm.iiko = {
                 api_login: data.iiko?.api_login || '',
@@ -426,6 +617,8 @@ export default {
             this.localForm.frontpad = {
                 secret: data.frontpad?.secret || ''
             }
+
+            this.logoPreview = data.visual?.logo_url || null
         },
 
         validateUrl(url) {
@@ -444,6 +637,40 @@ export default {
             return true
         },
 
+        async uploadLogo(event) {
+            const file = event.target.files[0]
+            if (!file) return
+
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                this.logoPreview = e.target.result
+            }
+            reader.readAsDataURL(file)
+
+            try {
+                const response = await this.store.uploadWorkspaceLogo(file)
+                this.logoPreview = response.logo_url
+                this.$notify?.success('Логотип загружен')
+            } catch (error) {
+                console.error('Upload logo failed:', error)
+                this.$notify?.error('Ошибка при загрузке логотипа')
+                this.logoPreview = null
+            }
+
+            event.target.value = ''
+        },
+
+        async removeLogo() {
+            try {
+                await axios.delete(`/api/workspaces/${this.store.uuid}/workspace/logo`)
+                this.logoPreview = null
+                this.$notify?.success('Логотип удалён')
+            } catch (error) {
+                console.error('Remove logo failed:', error)
+                this.$notify?.error('Ошибка при удалении')
+            }
+        },
+
         async save() {
             if (!this.validateUrl(this.localForm.url)) {
                 this.activeTab = 'base'
@@ -456,14 +683,12 @@ export default {
             try {
                 this.$emit('save', { ...this.localForm })
 
-                // Показываем успех
                 this.saveStatus = {
                     type: 'success',
                     icon: 'fa-solid fa-circle-check',
                     message: 'Настройки сохранены'
                 }
 
-                // Очищаем статус через 3 секунды
                 setTimeout(() => {
                     this.saveStatus = null
                 }, 3000)
@@ -479,14 +704,6 @@ export default {
             }
         },
 
-        onTest() {
-            if (!this.validateUrl(this.localForm.url)) {
-                return
-            }
-
-            this.$emit('test', { ...this.localForm })
-        },
-
         createNewSession() {
             window.open('/create-session', '_blank')
         },
@@ -494,8 +711,6 @@ export default {
         async refreshSession() {
             this.isLoading = true
             try {
-                // Здесь должна быть логика обновления сессии
-                // Через emit или напрямую
                 console.log('Refreshing session...')
             } finally {
                 this.isLoading = false
@@ -558,14 +773,6 @@ export default {
 
         goToWorkspace(workspace) {
             this.store.switchWorkspace(workspace.uuid)
-        },
-        pluralize(count, one, two, five) {
-            let n = Math.abs(count) % 100
-            if (n >= 5 && n <= 20) return five
-            n %= 10
-            if (n === 1) return one
-            if (n >= 2 && n <= 4) return two
-            return five
         }
     }
 }
@@ -1544,6 +1751,178 @@ export default {
 
     .linked-actions {
         opacity: 1;
+    }
+}
+
+/* === Визуальные настройки === */
+.visual-settings-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.logo-upload-wrapper {
+    width: 120px;
+}
+
+.logo-preview {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid #e9ecef;
+    background: #f8f9fa;
+}
+
+.logo-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.btn-remove-logo {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(220, 53, 69, 0.9);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    transition: all 0.15s ease;
+}
+
+.btn-remove-logo:hover {
+    background: #dc3545;
+    transform: scale(1.1);
+}
+
+.logo-upload-btn {
+    width: 120px;
+    height: 120px;
+    border: 2px dashed #dee2e6;
+    border-radius: 12px;
+    background: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #6c757d;
+}
+
+.logo-upload-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f8f9ff;
+}
+
+.logo-upload-btn i {
+    font-size: 24px;
+}
+
+.logo-upload-btn span {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.visual-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.color-picker {
+    display: flex;
+    gap: 8px;
+}
+
+.color-input {
+    width: 44px;
+    height: 40px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.color-text {
+    flex: 1;
+}
+
+/* === Превью workspace === */
+.workspace-preview {
+    margin-top: 20px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 12px;
+}
+
+.preview-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.preview-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.preview-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.preview-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.preview-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 4px;
+}
+
+.preview-desc {
+    font-size: 13px;
+    color: #6c757d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* === Responsive === */
+@media (max-width: 768px) {
+    .visual-settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .visual-fields {
+        grid-template-columns: 1fr;
     }
 }
 </style>

@@ -11,10 +11,12 @@
                 </div>
 
                 <div class="modal-body">
+
                     <div v-if="isLoading" class="loading-state">
                         <i class="fa-solid fa-spinner fa-spin"></i>
                         <p>Загрузка настроек...</p>
                     </div>
+
 
                     <SettingsForm
                         v-else
