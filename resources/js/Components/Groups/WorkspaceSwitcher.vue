@@ -62,24 +62,43 @@
                             v-for="workspace in filteredWorkspaces"
                             :key="workspace.id"
                             class="workspace-item"
-                            @click="selectWorkspace(workspace)"
                         >
                             <div class="workspace-icon" :style="{ background: workspace.color }">
                                 <img v-if="workspace.logo_url" :src="workspace.logo_url" alt="" />
                                 <span v-else>{{ workspace.initials }}</span>
                             </div>
-                            <div class="workspace-info">
+                            <div class="workspace-info" @click="selectWorkspace(workspace)">
                                 <div class="workspace-name">{{ workspace.name }}</div>
                                 <div class="workspace-label" v-if="workspace.label">{{ workspace.label }}</div>
                             </div>
-                            <button
-                                type="button"
-                                class="unlink-btn"
-                                @click.stop="confirmUnlink(workspace)"
-                                title="Удалить из списка"
-                            >
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
+
+                            <!-- ✅ Кнопки действий -->
+                            <div class="workspace-actions">
+                                <button
+                                    type="button"
+                                    class="ws-action-btn"
+                                    @click="selectWorkspace(workspace)"
+                                    title="Перейти"
+                                >
+                                    <i class="fa-solid fa-arrow-right"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="ws-action-btn"
+                                    @click="openInNewTab(workspace)"
+                                    title="Открыть в новом окне"
+                                >
+                                    <i class="fa-solid fa-up-right-from-square"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="ws-action-btn danger"
+                                    @click.stop="confirmUnlink(workspace)"
+                                    title="Удалить из списка"
+                                >
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -130,8 +149,8 @@
 
 <script>
 import { useWorkspaceStore } from '@/store/workspace.js'
-import CreateWorkspaceModal from '@/Components/Groups/WorkspaceCreateModal.vue'
-import AddWorkspaceModal from '@/Components/Groups/AddWorkspaceModal.vue'
+import CreateWorkspaceModal from './WorkspaceCreateModal.vue'
+import AddWorkspaceModal from './AddWorkspaceModal.vue'
 import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'
 
 export default {
@@ -182,8 +201,15 @@ export default {
             }
         },
 
+        // ✅ Переход в текущей вкладке
         selectWorkspace(workspace) {
             this.store.switchWorkspace(workspace.uuid)
+        },
+
+        // ✅ Открытие в новой вкладке
+        openInNewTab(workspace) {
+            const url = `/workspace/${workspace.uuid}`
+            window.open(url, '_blank')
         },
 
         openCreateModal() {
@@ -342,7 +368,7 @@ export default {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
-    width: 360px;
+    width: 380px;
     max-height: 560px;
     background: #fff;
     border: 1px solid #e9ecef;
@@ -442,7 +468,6 @@ export default {
     gap: 10px;
     padding: 8px;
     border-radius: 8px;
-    cursor: pointer;
     transition: all 0.15s ease;
 }
 
@@ -463,6 +488,8 @@ export default {
 
 .workspace-item .workspace-info {
     flex: 1;
+    min-width: 0;
+    cursor: pointer;
 }
 
 .workspace-item .workspace-name {
@@ -491,28 +518,43 @@ export default {
     font-size: 12px;
 }
 
-.unlink-btn {
-    width: 24px;
-    height: 24px;
-    border: none;
+/* === ✅ Кнопки действий === */
+.workspace-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+}
+
+.workspace-item:hover .workspace-actions {
+    opacity: 1;
+}
+
+.ws-action-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #dee2e6;
     border-radius: 6px;
-    background: transparent;
-    color: #adb5bd;
+    background: #fff;
+    color: #6c757d;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
-    opacity: 0;
+    font-size: 11px;
     transition: all 0.15s ease;
 }
 
-.workspace-item:hover .unlink-btn {
-    opacity: 1;
+.ws-action-btn:hover {
+    background: #e7f1ff;
+    border-color: #0d6efd;
+    color: #0d6efd;
 }
 
-.unlink-btn:hover {
+.ws-action-btn.danger:hover {
     background: #dc3545;
+    border-color: #dc3545;
     color: #fff;
 }
 
@@ -605,6 +647,10 @@ export default {
 
     .workspace-info {
         display: none;
+    }
+
+    .workspace-actions {
+        opacity: 1;
     }
 }
 </style>

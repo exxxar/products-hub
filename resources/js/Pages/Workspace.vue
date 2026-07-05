@@ -143,6 +143,9 @@
             </div>
 
         </div>
+
+        <!-- ✅ Footer -->
+        <WorkspaceFooter />
         <!-- Модалки -->
         <ProductModal
             ref="productModal"
@@ -216,6 +219,8 @@
             ref="pwaInstallModal"
             @install="handleInstall"
         />
+
+
     </div>
 </template>
 
@@ -243,7 +248,7 @@ import CollectionProductsModal from '@/Components/Collections/CollectionProducts
 import WorkspaceSwitcher from '@/Components/Groups/WorkspaceSwitcher.vue'
 import WorkspaceCreateModal from '@/Components/Groups/WorkspaceCreateModal.vue'
 import PwaInstallModal from '@/Components/Layout/PwaInstallModal.vue'
-
+import WorkspaceFooter from '@/Components/Layout/WorkspaceFooter.vue'
 export default {
     name: 'Workspace',
 
@@ -252,6 +257,7 @@ export default {
         NotifyContainer,
         WorkspaceSwitcher,
         TopMenu,
+        WorkspaceFooter,
         OnlineBadge,
         MenuConfiguratorModal,
         WorkspaceCreateModal,

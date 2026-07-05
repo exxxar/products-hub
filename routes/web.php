@@ -23,6 +23,18 @@ use Illuminate\Http\Request;
 |
 */
 
+Route::get('/docs', function () {
+    return view('docs.index');
+})->name('docs.index');
+
+Route::get('/docs/features', function () {
+    return view('docs.features');
+})->name('docs.features');
+
+Route::fallback(function () {
+    return response()->view('docs.not-found', [], 404);
+});
+
 Route::any("/webhook-test", function (Request $request){
     // Формируем полный объект для логирования
     $logData = [
@@ -109,7 +121,7 @@ Route::get('/workspace/{uuid}', [\App\Http\Controllers\WorkspaceController::clas
 Route::get('/create-session', [HomeController::class, 'newSession'])
     ->middleware('throttle:create-sessions');
 
-Route::get('/', [HomeController::class, 'index']);
+Route::get('/', [HomeController::class, 'index'])->name("workspace.main");
 
 
 require __DIR__.'/auth.php';
