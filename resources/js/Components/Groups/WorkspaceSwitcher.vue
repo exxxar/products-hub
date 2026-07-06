@@ -1,9 +1,9 @@
 <template>
     <div class="workspace-switcher">
-        <!-- Текущая доска -->
+        <!-- Триггер -->
         <button type="button" class="current-workspace" @click="togglePanel">
             <div class="workspace-icon" :style="{ background: store.workspaceColor }">
-                <img v-if="store.logo_url" :src="store.workspaceLogo" alt="" />
+                <img v-if="store.workspaceLogo" :src="store.workspaceLogo" alt="" />
                 <span v-else>{{ store.workspaceInitials }}</span>
             </div>
             <div class="workspace-info">
@@ -15,11 +15,30 @@
             <i class="fa-solid fa-chevron-down toggle-icon"></i>
         </button>
 
-        <!-- Панель -->
-        <Transition name="panel">
-            <div v-if="isOpen" class="switcher-panel" @click.stop>
+        <!-- ✅ Bottom Sheet для мобильных -->
+        <Transition name="sheet">
+            <div v-if="isOpen" class="sheet-overlay" @click="isOpen = false"></div>
+        </Transition>
+
+        <Transition name="sheet">
+            <div v-if="isOpen" class="workspace-sheet" :class="{ 'is-mobile': isMobile }">
+                <!-- Ручка для мобильных -->
+                <div v-if="isMobile" class="sheet-handle" @click="isOpen = false"></div>
+
+                <!-- Header -->
+                <div class="sheet-header">
+                    <div class="sheet-title">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>Мои доски</span>
+                        <span class="sheet-count">{{ store.linkedWorkspaces.length + 1 }}</span>
+                    </div>
+                    <button type="button" class="sheet-close" @click="isOpen = false">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
                 <!-- Поиск -->
-                <div class="panel-search">
+                <div class="sheet-search">
                     <i class="fa-solid fa-magnifying-glass"></i>
                     <input
                         v-model="searchQuery"
@@ -30,53 +49,51 @@
                 </div>
 
                 <!-- Быстрые действия -->
-                <div class="panel-actions">
-                    <button type="button" class="action-btn" @click="openCreateModal">
+                <div class="sheet-actions">
+                    <button type="button" class="sheet-action-btn" @click="openCreateModal">
                         <i class="fa-solid fa-plus"></i>
-                        <span>Новая доска</span>
+                        <span>Новая</span>
                     </button>
-                    <button type="button" class="action-btn" @click="openAddModal">
+                    <button type="button" class="sheet-action-btn" @click="openAddModal">
                         <i class="fa-solid fa-link"></i>
                         <span>Добавить</span>
                     </button>
                 </div>
 
-                <!-- Список досок -->
-                <div class="workspaces-section">
-                    <!-- Текущая доска -->
-                    <div class="workspace-item is-current">
-                        <div class="workspace-icon" :style="{ background: store.workspaceColor }">
+                <!-- Список -->
+                <div class="sheet-content">
+                    <!-- Текущая -->
+                    <div class="ws-item is-current">
+                        <div class="ws-icon" :style="{ background: store.workspaceColor }">
                             <img v-if="store.workspaceLogo" :src="store.workspaceLogo" alt="" />
                             <span v-else>{{ store.workspaceInitials }}</span>
                         </div>
-                        <div class="workspace-info">
-                            <div class="workspace-name">{{ store.workspaceName }}</div>
-                            <div class="workspace-badge">Текущая</div>
+                        <div class="ws-info">
+                            <div class="ws-name">{{ store.workspaceName }}</div>
+                            <div class="ws-badge">Текущая</div>
                         </div>
-                        <i class="fa-solid fa-check current-icon"></i>
+                        <i class="fa-solid fa-check ws-check"></i>
                     </div>
 
-                    <!-- Связанные доски -->
-                    <div v-if="filteredWorkspaces.length > 0" class="linked-section">
+                    <!-- Связанные -->
+                    <div v-if="filteredWorkspaces.length > 0" class="ws-list">
                         <div
                             v-for="workspace in filteredWorkspaces"
                             :key="workspace.id"
-                            class="workspace-item"
+                            class="ws-item"
                         >
-                            <div class="workspace-icon" :style="{ background: workspace.color }">
+                            <div class="ws-icon" :style="{ background: workspace.color }">
                                 <img v-if="workspace.logo_url" :src="workspace.logo_url" alt="" />
                                 <span v-else>{{ workspace.initials }}</span>
                             </div>
-                            <div class="workspace-info" @click="selectWorkspace(workspace)">
-                                <div class="workspace-name">{{ workspace.name }}</div>
-                                <div class="workspace-label" v-if="workspace.label">{{ workspace.label }}</div>
+                            <div class="ws-info" @click="selectWorkspace(workspace)">
+                                <div class="ws-name">{{ workspace.name }}</div>
+                                <div class="ws-label" v-if="workspace.label">{{ workspace.label }}</div>
                             </div>
-
-                            <!-- ✅ Кнопки действий -->
-                            <div class="workspace-actions">
+                            <div class="ws-actions">
                                 <button
                                     type="button"
-                                    class="ws-action-btn"
+                                    class="ws-btn"
                                     @click="selectWorkspace(workspace)"
                                     title="Перейти"
                                 >
@@ -84,17 +101,17 @@
                                 </button>
                                 <button
                                     type="button"
-                                    class="ws-action-btn"
+                                    class="ws-btn"
                                     @click="openInNewTab(workspace)"
-                                    title="Открыть в новом окне"
+                                    title="В новом окне"
                                 >
                                     <i class="fa-solid fa-up-right-from-square"></i>
                                 </button>
                                 <button
                                     type="button"
-                                    class="ws-action-btn danger"
+                                    class="ws-btn danger"
                                     @click.stop="confirmUnlink(workspace)"
-                                    title="Удалить из списка"
+                                    title="Удалить"
                                 >
                                     <i class="fa-solid fa-xmark"></i>
                                 </button>
@@ -102,47 +119,29 @@
                         </div>
                     </div>
 
-                    <!-- Пустое состояние -->
-                    <div v-else-if="searchQuery" class="empty-hint">
-                        Ничего не найдено
-                    </div>
+                    <!-- Пустое -->
+                    <div v-else-if="searchQuery" class="empty-hint">Ничего не найдено</div>
                     <div v-else class="empty-hint">
                         <i class="fa-solid fa-layer-group"></i>
                         <p>Нет связанных досок</p>
                         <button type="button" class="btn-add-first" @click="openAddModal">
                             <i class="fa-solid fa-plus"></i>
-                            Добавить первую доску
+                            Добавить
                         </button>
                     </div>
-                </div>
-
-                <!-- Подсказка -->
-                <div class="panel-hint">
-                    <kbd>Ctrl</kbd> + <kbd>K</kbd> — быстрый поиск
                 </div>
             </div>
         </Transition>
 
-        <!-- Overlay -->
-        <div v-if="isOpen" class="switcher-overlay" @click="isOpen = false"></div>
-
         <!-- Модалки -->
-        <CreateWorkspaceModal
-            ref="createModal"
-            @created="onWorkspaceCreated"
-        />
-
-        <AddWorkspaceModal
-            ref="addModal"
-            @added="onWorkspaceAdded"
-        />
-
+        <CreateWorkspaceModal ref="createModal" @created="onWorkspaceCreated" />
+        <AddWorkspaceModal ref="addModal" @added="onWorkspaceAdded" />
         <ConfirmModal
             v-model:show="showUnlinkConfirm"
             title="Удалить из списка?"
-            :description="`Удалить доску ${workspaceToUnlink?.name} из списка связанных?`"
-        @accept="unlinkWorkspace"
-        @reject="showUnlinkConfirm = false"
+            :description="`Удалить доску «${workspaceToUnlink?.name}» из связанных?`"
+            @accept="unlinkWorkspace"
+            @reject="showUnlinkConfirm = false"
         />
     </div>
 </template>
@@ -155,12 +154,7 @@ import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'
 
 export default {
     name: 'WorkspaceSwitcher',
-
-    components: {
-        CreateWorkspaceModal,
-        AddWorkspaceModal,
-        ConfirmModal
-    },
+    components: { CreateWorkspaceModal, AddWorkspaceModal, ConfirmModal },
 
     data() {
         return {
@@ -169,6 +163,7 @@ export default {
             searchQuery: '',
             showUnlinkConfirm: false,
             workspaceToUnlink: null,
+            isMobile: window.innerWidth < 768,
         }
     },
 
@@ -183,33 +178,21 @@ export default {
         }
     },
 
-    watch: {
-        isOpen(val) {
-            if (val) {
-                this.$nextTick(() => {
-                    this.$refs.searchInput?.focus()
-                })
-            }
-        }
-    },
-
     methods: {
-        async togglePanel() {
+        togglePanel() {
             this.isOpen = !this.isOpen
             if (this.isOpen) {
-                await this.store.loadLinkedWorkspaces()
+                this.store.loadLinkedWorkspaces()
+                this.$nextTick(() => this.$refs.searchInput?.focus())
             }
         },
 
-        // ✅ Переход в текущей вкладке
         selectWorkspace(workspace) {
             this.store.switchWorkspace(workspace.uuid)
         },
 
-        // ✅ Открытие в новой вкладке
         openInNewTab(workspace) {
-            const url = `/workspace/${workspace.uuid}`
-            window.open(url, '_blank')
+            window.open(`/workspace/${workspace.uuid}`, '_blank')
         },
 
         openCreateModal() {
@@ -229,7 +212,6 @@ export default {
 
         async unlinkWorkspace() {
             if (!this.workspaceToUnlink) return
-
             try {
                 await this.store.unlinkWorkspace(this.workspaceToUnlink.uuid)
                 this.$notify?.success('Доска удалена из списка')
@@ -258,32 +240,18 @@ export default {
             return five
         },
 
-        handleClickOutside(e) {
-            if (!this.$el.contains(e.target)) {
-                this.isOpen = false
-            }
-        },
-
-        handleKeydown(e) {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                e.preventDefault()
-                this.togglePanel()
-            }
-            if (e.key === 'Escape' && this.isOpen) {
-                this.isOpen = false
-            }
+        handleResize() {
+            this.isMobile = window.innerWidth < 768
         }
     },
 
     mounted() {
-        document.addEventListener('click', this.handleClickOutside)
-        document.addEventListener('keydown', this.handleKeydown)
+        window.addEventListener('resize', this.handleResize)
         this.store.loadLinkedWorkspaces()
     },
 
     beforeUnmount() {
-        document.removeEventListener('click', this.handleClickOutside)
-        document.removeEventListener('keydown', this.handleKeydown)
+        window.removeEventListener('resize', this.handleResize)
     }
 }
 </script>
@@ -293,6 +261,7 @@ export default {
     position: relative;
 }
 
+/* === Trigger === */
 .current-workspace {
     display: flex;
     align-items: center;
@@ -359,42 +328,130 @@ export default {
     transition: transform 0.2s ease;
 }
 
-.current-workspace:hover .toggle-icon {
-    color: #0d6efd;
+/* === Overlay === */
+.sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
 }
 
-/* === Панель === */
-.switcher-panel {
-    position: absolute;
-    top: calc(100% + 8px);
+/* === Sheet (общий) === */
+.workspace-sheet {
+    position: fixed;
+    top: 0;
     left: 0;
-    width: 380px;
-    max-height: 560px;
+    right: 0;
+    bottom: 0;
     background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
     z-index: 1000;
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
 
-.switcher-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.2);
-    z-index: 999;
+/* Десктоп — по центру */
+@media (min-width: 768px) {
+    .workspace-sheet:not(.is-mobile) {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: auto;
+        bottom: auto;
+        width: 380px;
+        max-height: 560px;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+    }
 }
 
-/* === Поиск === */
-.panel-search {
+/* Мобильный — снизу */
+.workspace-sheet.is-mobile {
+    border-radius: 20px 20px 0 0;
+    top: auto;
+    max-height: 85vh;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+/* Ручка для свайпа */
+.sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: #dee2e6;
+    border-radius: 2px;
+    margin: 10px auto 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* === Header === */
+.sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e9ecef;
+    flex-shrink: 0;
+}
+
+.sheet-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+}
+
+.sheet-title i {
+    color: #0d6efd;
+    font-size: 15px;
+}
+
+.sheet-count {
+    padding: 2px 8px;
+    background: #e7f1ff;
+    color: #0d6efd;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sheet-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: #f1f3f5;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.sheet-close:hover {
+    background: #e9ecef;
+    color: #212529;
+}
+
+/* === Search === */
+.sheet-search {
     position: relative;
     padding: 12px;
     border-bottom: 1px solid #e9ecef;
+    flex-shrink: 0;
 }
 
-.panel-search > i {
+.sheet-search > i {
     position: absolute;
     left: 24px;
     top: 50%;
@@ -403,9 +460,9 @@ export default {
     font-size: 13px;
 }
 
-.panel-search input {
+.sheet-search input {
     width: 100%;
-    padding: 9px 12px 9px 36px;
+    padding: 10px 12px 10px 36px;
     border: 1px solid #dee2e6;
     border-radius: 8px;
     font-size: 14px;
@@ -413,113 +470,137 @@ export default {
     background: #f8f9fa;
 }
 
-.panel-search input:focus {
+.sheet-search input:focus {
     background: #fff;
     border-color: #0d6efd;
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
 }
 
-/* === Быстрые действия === */
-.panel-actions {
+/* === Actions === */
+.sheet-actions {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     padding: 10px 12px;
     border-bottom: 1px solid #f1f3f5;
-    background: #f8f9fa;
+    background: #fafbfc;
+    flex-shrink: 0;
 }
 
-.action-btn {
+.sheet-action-btn {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 7px;
+    padding: 9px;
     border: 1px dashed #dee2e6;
     border-radius: 8px;
     background: #fff;
     color: #495057;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
-.action-btn:hover {
+.sheet-action-btn:hover {
     border-color: #0d6efd;
     color: #0d6efd;
     border-style: solid;
 }
 
-.action-btn i {
+.sheet-action-btn i {
     font-size: 11px;
 }
 
-/* === Секция досок === */
-.workspaces-section {
+/* === Content === */
+.sheet-content {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
+    -webkit-overflow-scrolling: touch;
 }
 
-.workspace-item {
+/* === Workspace Items === */
+.ws-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px;
-    border-radius: 8px;
-    transition: all 0.15s ease;
+    padding: 10px;
+    border-radius: 10px;
+    transition: background 0.15s ease;
+    margin-bottom: 4px;
 }
 
-.workspace-item:hover {
+.ws-item:hover {
     background: #f8f9fa;
 }
 
-.workspace-item.is-current {
+.ws-item.is-current {
     background: #e7f1ff;
-    cursor: default;
 }
 
-.workspace-item .workspace-icon {
-    width: 32px;
-    height: 32px;
-    font-size: 12px;
+.ws-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.workspace-item .workspace-info {
+.ws-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ws-info {
     flex: 1;
     min-width: 0;
     cursor: pointer;
 }
 
-.workspace-item .workspace-name {
-    font-size: 13px;
+.ws-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #212529;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.workspace-label {
+.ws-label {
     font-size: 11px;
     color: #6c757d;
-    margin-top: 1px;
+    margin-top: 2px;
 }
 
-.workspace-badge {
+.ws-badge {
     font-size: 10px;
-    padding: 1px 6px;
+    padding: 2px 8px;
     background: #0d6efd;
     color: #fff;
     border-radius: 8px;
     font-weight: 500;
     display: inline-block;
-    margin-top: 2px;
+    margin-top: 3px;
 }
 
-.current-icon {
+.ws-check {
     color: #198754;
-    font-size: 12px;
+    font-size: 14px;
+    flex-shrink: 0;
 }
 
-/* === ✅ Кнопки действий === */
-.workspace-actions {
+/* === Actions === */
+.ws-actions {
     display: flex;
     gap: 4px;
     opacity: 0;
@@ -527,57 +608,64 @@ export default {
     flex-shrink: 0;
 }
 
-.workspace-item:hover .workspace-actions {
+.ws-item:hover .ws-actions {
     opacity: 1;
 }
 
-.ws-action-btn {
-    width: 28px;
-    height: 28px;
+/* На мобильном кнопки всегда видны */
+@media (max-width: 767px) {
+    .ws-actions {
+        opacity: 1;
+    }
+}
+
+.ws-btn {
+    width: 32px;
+    height: 32px;
     border: 1px solid #dee2e6;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #fff;
     color: #6c757d;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     transition: all 0.15s ease;
 }
 
-.ws-action-btn:hover {
+.ws-btn:hover {
     background: #e7f1ff;
     border-color: #0d6efd;
     color: #0d6efd;
 }
 
-.ws-action-btn.danger:hover {
+.ws-btn.danger:hover {
     background: #dc3545;
     border-color: #dc3545;
     color: #fff;
 }
 
-/* === Пустое состояние === */
+/* === Empty === */
 .empty-hint {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 30px 20px;
+    padding: 40px 20px;
     text-align: center;
     color: #adb5bd;
 }
 
 .empty-hint i {
-    font-size: 32px;
+    font-size: 36px;
     margin-bottom: 12px;
     opacity: 0.5;
 }
 
 .empty-hint p {
     margin: 0 0 12px 0;
-    font-size: 13px;
+    font-size: 14px;
     color: #6c757d;
 }
 
@@ -590,7 +678,7 @@ export default {
     border-radius: 8px;
     background: #fff;
     color: #0d6efd;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
 }
@@ -600,57 +688,28 @@ export default {
     color: #fff;
 }
 
-/* === Подсказка === */
-.panel-hint {
-    padding: 8px 12px;
-    border-top: 1px solid #f1f3f5;
-    background: #f8f9fa;
-    font-size: 11px;
-    color: #6c757d;
-    text-align: center;
+/* === Transitions === */
+.sheet-enter-active,
+.sheet-leave-active {
+    transition: opacity 0.2s ease;
 }
 
-.panel-hint kbd {
-    display: inline-block;
-    padding: 2px 6px;
-    background: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    font-size: 10px;
-    font-family: monospace;
-    color: #495057;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-/* === Transition === */
-.panel-enter-active,
-.panel-leave-active {
-    transition: all 0.2s ease;
-}
-
-.panel-enter-from,
-.panel-leave-to {
+.sheet-enter-from,
+.sheet-leave-to {
     opacity: 0;
-    transform: translateY(-8px);
 }
 
-/* === Responsive === */
-@media (max-width: 576px) {
-    .switcher-panel {
-        width: calc(100vw - 24px);
-        left: -12px;
-    }
+/* Мобильная анимация для sheet */
+.sheet-enter-active .workspace-sheet.is-mobile {
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
-    .current-workspace {
-        min-width: auto;
-    }
+.sheet-leave-active .workspace-sheet.is-mobile {
+    animation: slideDown 0.25s ease forwards;
+}
 
-    .workspace-info {
-        display: none;
-    }
-
-    .workspace-actions {
-        opacity: 1;
-    }
+@keyframes slideDown {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
 }
 </style>

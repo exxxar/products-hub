@@ -13,6 +13,11 @@
             </button>
         </div>
 
+        <!-- ✅ Overlay для мобильных -->
+        <Transition name="fade">
+            <div v-if="isOpen" class="panel-overlay" @click="isOpen = false"></div>
+        </Transition>
+
         <!-- Панель с анимацией -->
         <Transition name="slide-fade">
             <div v-if="isOpen" class="panel">
@@ -1123,5 +1128,117 @@ export default {
 
 .master-btn.master-unlocked:hover {
     background: rgba(25, 135, 84, 0.2);
+}
+
+@media (max-width: 768px) {
+    .top-menu {
+        position: static;
+        gap: 4px;
+    }
+
+    .toggle-wrapper {
+        flex-shrink: 0;
+    }
+
+    /* Панель на мобильном — bottom sheet */
+    .panel {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        min-width: auto;
+        width: 100%;
+        max-height: 85vh;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    }
+
+    @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+
+    /* Ручка для свайпа */
+    .panel::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        background: #dee2e6;
+        border-radius: 2px;
+        margin: 8px auto 12px;
+    }
+
+    /* Оверлей */
+    .panel-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    /* Контент панели */
+    .panel-row {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .bottom-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .bulk-actions {
+        justify-content: center;
+    }
+
+    .stats {
+        justify-content: center;
+    }
+
+    .switch-sidebar {
+        justify-content: center;
+    }
+
+    /* Скрываем текст у кнопок */
+    .btn-label {
+        display: none;
+    }
+
+    /* Поиск на всю ширину */
+    .search-wrapper {
+        order: 10;
+        width: 100%;
+        max-width: none;
+    }
+
+    /* Разделители */
+    .divider {
+        display: none;
+    }
+
+    /* Группы инструментов */
+    .tool-group {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
+/* Desktop — обычное поведение */
+@media (min-width: 769px) {
+    .panel-overlay {
+        display: none;
+    }
 }
 </style>

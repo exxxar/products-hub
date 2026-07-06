@@ -796,6 +796,34 @@ export default {
     border-bottom: 1px solid #e9ecef;
 }
 
+/* ✅ Мобильная адаптация */
+@media (max-width: 768px) {
+    .workspace-topbar {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    /* Компактный WorkspaceSwitcher */
+    .workspace-switcher .current-workspace {
+        min-width: auto;
+        padding: 6px 10px;
+    }
+
+    .workspace-switcher .workspace-info {
+        display: none;
+    }
+
+    .workspace-switcher .toggle-icon {
+        display: none;
+    }
+
+    .workspace-switcher .workspace-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+}
+
 .workspace-container {
     min-height: 100vh;
     display: flex;
@@ -1150,9 +1178,8 @@ export default {
 }
 
 .online-badge-fixed-container {
-    width: 150px;
     position: fixed;
-    bottom: 50px;
-    right: 20px;
+    bottom: 40px;
+    right: 5px;
 }
 </style>
