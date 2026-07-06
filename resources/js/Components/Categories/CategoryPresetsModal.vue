@@ -204,7 +204,6 @@ export default {
             this.selectedPreset = preset
             this.presetDetails = null // ✅ Сбрасываем перед загрузкой
 
-            console.log("Test")
             try {
                 const response = await axios.get(
                     `/api/workspaces/${this.store.uuid}/category-presets/${preset.key}`

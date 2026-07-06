@@ -68,7 +68,6 @@ if (initialToken) {
 axios.interceptors.request.use(config => {
     const token = getWorkspaceToken()
 
-    console.log("tokken", token)
     if (token) {
         config.headers['X-Workspace-Token'] = token
     }

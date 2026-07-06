@@ -483,7 +483,6 @@ export default {
         async initWorkspace() {
             this.workspace = this.item
 
-            console.log("Workspace", this.workspace)
             // Инициализируем store
             this.store.setName(this.item.name)
             this.store.setDescription(this.item.description)
@@ -708,7 +707,6 @@ export default {
         },
 
         async saveCollection(data) {
-            console.log("data", data)
             try {
                 await this.store.saveCollection(data)
             } catch (error) {
