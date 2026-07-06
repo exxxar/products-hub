@@ -319,7 +319,7 @@ export default {
                 description: this.store.description || '',
                 url: this.store.url || this.store.settings?.url || '',
                 visual: {
-                    label: this.store.settings.visual.label || '',
+                    label: this.store.settings?.visual?.label || '',
                     color: this.store.color || '#0d6efd',
                     logo_url: this.store.logo_url || null
                 },
