@@ -42,15 +42,6 @@ export default {
         // ✅ НОВОЕ: Переключение режима
         setDisplayMode(mode) {
             this.displayMode = mode
-            // Сохраняем в settings на бэкенде
-            if (this.uuid) {
-                axios.put(`/api/workspaces/${this.uuid}`, {
-                    settings: {
-                        ...this.settings,
-                        display_mode: mode
-                    }
-                }).catch(e => console.error('Save display mode failed:', e))
-            }
         },
         async uploadWorkspaceLogo(file) {
             const formData = new FormData()

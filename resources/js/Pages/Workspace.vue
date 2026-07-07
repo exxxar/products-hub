@@ -791,13 +791,14 @@ export default {
         },
 
         async handleSaveSettings(formData) {
+            console.log("handleSaveSettings", formData)
             try {
                 // Сохраняем базовую информацию
                 await axios.put(`/api/workspaces/${this.store.uuid}`, {
                     name: formData.name,
                     description: formData.description,
                     url: formData.url,
-
+                    color: formData.visual.color,
                     settings: {
                         ...this.store.settings,
                         visual: formData.visual,
@@ -813,6 +814,7 @@ export default {
                 // Обновляем локальное состояние
                 this.store.name = formData.name
                 this.store.description = formData.description
+                this.store.color = formData.visual.color
                 this.store.settings = {
                     ...this.store.settings,
                     visual: formData.visual,
