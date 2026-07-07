@@ -349,6 +349,7 @@ export default {
                 label: this.store.name || '',
                 description: this.store.description || '',
                 url: this.store.url || this.store.settings?.url || '',
+                display_mode: this.store.settings?.display_mode || 'products',
                 visual: {
                     label: this.store.settings?.visual?.label || '',
                     color: this.store.color || '#0d6efd',
@@ -530,6 +531,8 @@ export default {
             this.store.setColor(this.item.color)
             this.store.setAccessToken(this.item.access_token)
             this.store.setSettings(this.item.settings)
+            this.store.setDisplayMode(this.item.settings?.display_mode || 'products')
+          //  this.store.setDisplayMode( 'workspaces')
             this.store.setProducts(this.item.products || [])
 
             this.store.setCollections(this.item.collections || [])
@@ -776,21 +779,24 @@ export default {
         },
 
         async handleSaveSettings(formData) {
-
             try {
                 // Сохраняем базовую информацию
                 await axios.put(`/api/workspaces/${this.store.uuid}`, {
                     name: formData.name,
                     description: formData.description,
                     url: formData.url,
+
                     settings: {
                         ...this.store.settings,
                         visual: formData.visual,
                         vk_shop_links: formData.vk_shop_links,
                         iiko: formData.iiko,
-                        frontpad: formData.frontpad
+                        frontpad: formData.frontpad,
+                        display_mode: formData.display_mode || 'products',
                     }
                 })
+
+                this.store.setDisplayMode(formData.display_mode || 'products')
 
                 // Обновляем локальное состояние
                 this.store.name = formData.name
@@ -800,7 +806,8 @@ export default {
                     visual: formData.visual,
                     vk_shop_links: formData.vk_shop_links,
                     iiko: formData.iiko,
-                    frontpad: formData.frontpad
+                    frontpad: formData.frontpad,
+                    display_mode: formData.display_mode || 'products',
                 }
 
                 this.$notify?.success('Настройки сохранены')

@@ -715,6 +715,7 @@ export default {
             this.saveStatus = null
 
             try {
+
                 this.$emit('save', { ...this.localForm })
 
                 this.saveStatus = {
