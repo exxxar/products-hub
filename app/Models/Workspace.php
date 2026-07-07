@@ -280,6 +280,7 @@ class Workspace extends Model
 
         return Workspace::whereIn('uuid', $linkedUuids)
             ->where('id', '!=', $this->id)
+            ->withCount(['products', 'categories', 'collections']) // ✅ Добавили счётчики
             ->orderBy('name')
             ->get()
             ->map(fn($w) => [
@@ -290,6 +291,11 @@ class Workspace extends Model
                 'color' => $w->color,
                 'logo_url' => $w->logo_url,
                 'initials' => $w->initials,
+                'stats' => [ // ✅ Добавили статистику
+                    'products_count' => $w->products_count,
+                    'categories_count' => $w->categories_count,
+                    'collections_count' => $w->collections_count,
+                ],
             ]);
     }
 
