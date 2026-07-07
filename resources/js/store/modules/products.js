@@ -2,8 +2,18 @@ import axios from 'axios'
 
 export default {
     state: () => ({
-        products: [],
+        products: [],              // Загруженные товары
+        totalProducts: 0,          // Общее количество в БД
+        hasMoreProducts: false,    // Есть ли ещё для загрузки
+        productsLoading: false,    // Идёт загрузка
+        productsLoadingMore: false,// Идёт догрузка
+
+        filters: {
+            in_stop_list: false,
+            is_active: false,
+        },
         selectedIds: [],
+        batchSize: 50,
         search: '',
         editingProduct: null,
 
@@ -12,6 +22,17 @@ export default {
     }),
 
     getters: {
+        // Прогресс загрузки
+        loadProgress(state) {
+            if (state.totalProducts === 0) return 0
+            return Math.round((state.products.length / state.totalProducts) * 100)
+        },
+
+        // Статистика для футера (всегда общее количество)
+        productsTotalCount(state) {
+            return state.totalProducts
+        },
+
         filteredProducts(state) {
             let filtered = state.products
 
@@ -55,13 +76,131 @@ export default {
     },
 
     actions: {
+
+        async loadProducts(reset = true) {
+            if (this.productsLoading) return
+
+            this.productsLoading = true
+
+            if (reset) {
+                this.products = []
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    limit: this.batchSize,
+                    offset: reset ? 0 : this.products.length,
+                })
+
+                if (this.search) {
+                    params.append('search', this.search)
+                }
+
+                if (this.filters.in_stop_list) {
+                    params.append('in_stop_list', '1')
+                }
+
+                if (this.filters.is_active) {
+                    params.append('is_active', '1')
+                }
+
+                const response = await axios.get(
+                    `/api/workspaces/${this.uuid}/products?${params.toString()}`
+                )
+
+                if (reset) {
+                    this.products = response.data.products
+                } else {
+                    // Добавляем новые к существующим
+                    this.products = [...this.products, ...response.data.products]
+                }
+
+                this.totalProducts = response.data.total
+                this.hasMoreProducts = response.data.has_more
+
+                return response.data
+            } catch (error) {
+                console.error('Load products failed:', error)
+                throw error
+            } finally {
+                this.productsLoading = false
+            }
+        },
+
+        // ✅ Догрузка следующей порции
+        async loadMoreProducts() {
+            if (this.productsLoadingMore || !this.hasMoreProducts) return
+
+            this.productsLoadingMore = true
+
+            try {
+                const params = new URLSearchParams({
+                    limit: this.batchSize,
+                    offset: this.products.length,
+                })
+
+                if (this.search) {
+                    params.append('search', this.search)
+                }
+
+                if (this.filters.in_stop_list) {
+                    params.append('in_stop_list', '1')
+                }
+
+                if (this.filters.is_active) {
+                    params.append('is_active', '1')
+                }
+
+                const response = await axios.get(
+                    `/api/workspaces/${this.uuid}/products?${params.toString()}`
+                )
+
+                this.products = [...this.products, ...response.data.products]
+                this.hasMoreProducts = response.data.has_more
+
+                return response.data
+            } catch (error) {
+                console.error('Load more products failed:', error)
+                throw error
+            } finally {
+                this.productsLoadingMore = false
+            }
+        },
+
+        // ✅ Установка поиска с перезагрузкой
+        setSearch(value) {
+            this.search = value
+            this.loadProducts(true) // Сброс и новая загрузка
+        },
+
+        // ✅ Переключение фильтров
+        toggleStopListFilter() {
+            this.filters.in_stop_list = !this.filters.in_stop_list
+            if (this.filters.in_stop_list) {
+                this.filters.is_active = false
+            }
+            this.loadProducts(true)
+        },
+
+        toggleActiveFilter() {
+            this.filters.is_active = !this.filters.is_active
+            if (this.filters.is_active) {
+                this.filters.in_stop_list = false
+            }
+            this.loadProducts(true)
+        },
+
+        clearFilters() {
+            this.filters = { in_stop_list: false, is_active: false }
+            this.search = ''
+            this.loadProducts(true)
+        },
+
         setProducts(products) {
             this.products = products || []
         },
 
-        setSearch(query) {
-            this.search = query
-        },
+
 
         toggleSelect(id) {
             const index = this.selectedIds.indexOf(id)
@@ -147,30 +286,6 @@ export default {
             }
         },
 
-        // ✅ Переключение фильтра стоп-листа
-        toggleStopListFilter() {
-            this.showOnlyStopList = !this.showOnlyStopList
-            // Если включили стоп-лист — выключаем фильтр активных
-            if (this.showOnlyStopList) {
-                this.showOnlyActive = false
-            }
-        },
-
-        // ✅ Переключение фильтра активных
-        toggleActiveFilter() {
-            this.showOnlyActive = !this.showOnlyActive
-            // Если включили активные — выключаем стоп-лист
-            if (this.showOnlyActive) {
-                this.showOnlyStopList = false
-            }
-        },
-
-        // ✅ Сброс всех фильтров
-        clearFilters() {
-            this.showOnlyStopList = false
-            this.showOnlyActive = false
-            this.search = ''
-        },
 
         // ✅ Добавление выбранных товаров в стоп-лист
         async addSelectedToStopList() {

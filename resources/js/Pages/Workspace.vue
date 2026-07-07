@@ -146,13 +146,21 @@
                         </div>
                     </template>
 
+                    <!-- Загрузка -->
+                    <div v-if="store.productsLoading" class="loading-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <p>Загрузка товаров...</p>
+                    </div>
+
                     <!-- Пустое состояние -->
-                    <div v-if="store.products.length === 0 && !needPassword" class="empty-state-main ">
+                    <div v-else-if="store.products.length === 0 && !needPassword" class="empty-state-main ">
                         <i class="fa-solid fa-box-open"></i>
                         <h5>Нет товаров</h5>
                         <p>Добавьте первый товар или импортируйте из другого источника</p>
 
                     </div>
+
+                    <LoadMoreButton />
                 </template>
             </div>
 
@@ -265,11 +273,13 @@ import PwaInstallModal from '@/Components/Layout/PwaInstallModal.vue'
 import WorkspaceFooter from '@/Components/Layout/WorkspaceFooter.vue'
 
 import WorkspaceCardsGrid from '@/Components/Groups/WorkspaceCardsGrid.vue'
+import LoadMoreButton from '@/Components/Products/LoadMoreButton.vue'
 
 export default {
     name: 'Workspace',
 
     components: {
+        LoadMoreButton,
         WorkspaceCardsGrid,
         PwaInstallModal,
         NotifyContainer,
@@ -399,6 +409,8 @@ export default {
         if (this.store.isWorkspaceAggregator) {
             this.store.loadLinkedWorkspaces()
         }
+
+        this.store.loadProducts(true)
 
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault()
@@ -533,7 +545,7 @@ export default {
             this.store.setSettings(this.item.settings)
             this.store.setDisplayMode(this.item.settings?.display_mode || 'products')
           //  this.store.setDisplayMode( 'workspaces')
-            this.store.setProducts(this.item.products || [])
+           // this.store.setProducts(this.item.products || [])
 
             this.store.setCollections(this.item.collections || [])
             this.store.setCategories(this.item.categories || [])

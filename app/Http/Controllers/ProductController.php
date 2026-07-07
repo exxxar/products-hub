@@ -14,6 +14,52 @@ use Illuminate\Support\Facades\Storage;
 class ProductController extends Controller
 {
 
+    public function index(Request $request)
+    {
+        $workspace = App::make('workspace');
+
+        $query = $workspace->products()
+            ->with(['categories', 'attributes', 'ingredients']);
+
+        // Поиск
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        // Фильтры
+        if ($request->input('in_stop_list')) {
+            $query->where('in_stop_list', true);
+        }
+
+        if ($request->input('is_active')) {
+            $query->where('is_active', true)->where('in_stop_list', false);
+        }
+
+        // Общее количество (для футера)
+        $total = $query->count();
+
+        // Пагинация
+        $limit = min((int) $request->input('limit', 50), 200);
+        $offset = (int) $request->input('offset', 0);
+
+        $products = $query
+            ->orderBy('created_at', 'desc')
+            ->skip($offset)
+            ->take($limit)
+            ->get();
+
+        return response()->json([
+            'products' => $products,
+            'total' => $total,
+            'loaded' => $offset + $products->count(),
+            'has_more' => ($offset + $products->count()) < $total,
+        ]);
+    }
+
     protected function decodeJsonFields(Request $request)
     {
         $jsonFields = ['attributes', 'ingredients', 'variants', 'config'];

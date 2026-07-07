@@ -13,8 +13,8 @@
             <div class="footer-stats">
                 <div class="footer-stat" title="Товаров в workspace">
                     <i class="fa-solid fa-box"></i>
-                    <span class="stat-count">{{ store.products?.length || 0 }}</span>
-                    <span class="stat-label">{{ pluralize(store.products?.length || 0, 'товар', 'товара', 'товаров') }}</span>
+                    <span class="stat-count">{{ store.productsTotalCount || 0 }}</span>
+                    <span class="stat-label">{{ pluralize(store.productsTotalCount || 0, 'товар', 'товара', 'товаров') }}</span>
                 </div>
 
                 <div class="footer-stat" title="Категорий в workspace">
