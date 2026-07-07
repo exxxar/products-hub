@@ -35,11 +35,6 @@ class ProductController extends Controller
 
         $this->decodeJsonFields($request);
 
-        // Логирование для отладки
-        \Log::info('Product store request', [
-            'categories' => $request->input('categories'),
-            'all_input' => $request->all()
-        ]);
 
         // Валидация
         $validated = $request->validate([

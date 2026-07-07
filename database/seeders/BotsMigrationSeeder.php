@@ -186,13 +186,23 @@ class BotsMigrationSeeder extends Seeder
             ->get();
 
         foreach ($products as $oldProduct) {
-            // ✅ Картинки товаров — оставляем внешние URL (не скачиваем)
+            // ✅ Формируем images в правильном формате: [{url, name, size}, ...]
             $images = json_decode($oldProduct->images ?? '[]', true) ?: [];
-            $localImages = [];
+            $formattedImages = [];
 
+            $imageIndex = 0;
             foreach ($images as $imgUrl) {
                 if ($this->isValidUrl($imgUrl)) {
-                    $localImages[] = $imgUrl;
+                    // Пытаемся извлечь имя файла из URL
+                    $urlPath = parse_url($imgUrl, PHP_URL_PATH);
+                    $fileName = $urlPath ? basename($urlPath) : "image_{$imageIndex}.jpg";
+
+                    $formattedImages[] = [
+                        'url' => $imgUrl,
+                        'name' => $fileName,
+                        'size' => 0, // Для внешних URL размер неизвестен
+                    ];
+                    $imageIndex++;
                 }
             }
 
@@ -211,7 +221,7 @@ class BotsMigrationSeeder extends Seeder
                 'old_price' => $oldProduct->old_price ?: 0,
                 'sku' => $oldProduct->article,
                 'description' => $oldProduct->description,
-                'images' => $localImages,
+                'images' => $formattedImages, // ✅ Массив объектов {url, name, size}
                 'dimensions' => json_decode($oldProduct->dimension ?? '{}', true),
                 'config' => $config,
                 'is_active' => is_null($oldProduct->deleted_at),
