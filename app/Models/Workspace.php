@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Storage;
 
 class Workspace extends Model
 {
+
+    protected $table = 'workspaces';
+
     protected $fillable = [
         'uuid', 'name', 'settings',
         'logo_path', 'label', 'color', 'is_archived', // ✅ Новые поля
@@ -153,7 +156,7 @@ class Workspace extends Model
 
     public function getAccessUrl()
     {
-        return url("/w/{$this->uuid}?token={$this->access_token}");
+        return url("/workspace/{$this->uuid}?token={$this->access_token}");
     }
 
     public function isValidToken($token)
