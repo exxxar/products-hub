@@ -22,7 +22,9 @@ class WorkspaceLinkController extends Controller
             'uuid' => 'required|string|uuid',
         ]);
 
-        $targetWorkspace = Workspace::where('uuid', $validated['uuid'])->first();
+        $targetWorkspace = Workspace::where('uuid', $validated['uuid'])
+            ->withCount(['products', 'categories', 'collections']) // ✅ Добавили счётчики
+            ->first();
 
         if (!$targetWorkspace) {
             return response()->json([
@@ -44,6 +46,11 @@ class WorkspaceLinkController extends Controller
                 'color' => $targetWorkspace->color,
                 'logo_url' => $targetWorkspace->logo_url,
                 'initials' => $targetWorkspace->initials,
+                'stats' => [ // ✅ Добавили статистику
+                    'products_count' => $targetWorkspace->products_count,
+                    'categories_count' => $targetWorkspace->categories_count,
+                    'collections_count' => $targetWorkspace->collections_count,
+                ],
             ],
             'is_already_linked' => $isAlreadyLinked,
         ]);
@@ -56,6 +63,7 @@ class WorkspaceLinkController extends Controller
     {
         $workspace = App::make('workspace');
 
+        // ✅ getLinkedWorkspaces() уже возвращает статистику (если обновил модель)
         $linked = $workspace->getLinkedWorkspaces();
 
         return response()->json([
@@ -147,6 +155,11 @@ class WorkspaceLinkController extends Controller
                 'label' => $newWorkspace->label,
                 'color' => $newWorkspace->color,
                 'initials' => $newWorkspace->initials,
+                'stats' => [ // ✅ Новая доска — счётчики нулевые
+                    'products_count' => 0,
+                    'categories_count' => 0,
+                    'collections_count' => 0,
+                ],
             ],
             'linked' => $workspace->getLinkedWorkspaces(),
         ], 201);
@@ -161,6 +174,7 @@ class WorkspaceLinkController extends Controller
         $linkedUuids = $workspace->getSetting('linked_workspaces', []);
 
         $workspaces = Workspace::where('id', '!=', $workspace->id)
+            ->withCount(['products', 'categories', 'collections']) // ✅ Добавили счётчики
             ->orderBy('name')
             ->get()
             ->map(fn($w) => [
@@ -172,8 +186,42 @@ class WorkspaceLinkController extends Controller
                 'logo_url' => $w->logo_url,
                 'initials' => $w->initials,
                 'is_linked' => in_array($w->uuid, $linkedUuids),
+                'stats' => [ // ✅ Добавили статистику
+                    'products_count' => $w->products_count,
+                    'categories_count' => $w->categories_count,
+                    'collections_count' => $w->collections_count,
+                ],
             ]);
 
         return response()->json($workspaces);
+    }
+
+    /**
+     * ✅ НОВЫЙ МЕТОД: Массовая загрузка статистики по массиву UUID
+     */
+    public function stats(Request $request)
+    {
+        $validated = $request->validate([
+            'uuids' => 'required|array',
+            'uuids.*' => 'string|uuid',
+        ]);
+
+        $workspaces = Workspace::whereIn('uuid', $validated['uuids'])
+            ->withCount(['products', 'categories', 'collections'])
+            ->get();
+
+        $stats = [];
+        foreach ($workspaces as $w) {
+            $stats[$w->uuid] = [
+                'products_count' => $w->products_count,
+                'categories_count' => $w->categories_count,
+                'collections_count' => $w->collections_count,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'stats' => $stats,
+        ]);
     }
 }

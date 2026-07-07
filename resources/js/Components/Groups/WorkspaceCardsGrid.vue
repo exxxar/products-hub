@@ -38,6 +38,23 @@
                 <div class="card-body">
                     <div class="card-name">{{ workspace.name }}</div>
                     <div v-if="workspace.label" class="card-label">{{ workspace.label }}</div>
+
+                    <!-- ✅ Блок со статистикой -->
+                    <div class="card-stats">
+                        <div class="stat-item" :title="`${workspace.stats?.products_count || 0} товаров`">
+                            <i class="fa-solid fa-box"></i>
+                            <span>{{ formatNumber(workspace.stats?.products_count) }}</span>
+                        </div>
+                        <div class="stat-item" :title="`${workspace.stats?.categories_count || 0} категорий`">
+                            <i class="fa-solid fa-folder"></i>
+                            <span>{{ formatNumber(workspace.stats?.categories_count) }}</span>
+                        </div>
+                        <div class="stat-item" :title="`${workspace.stats?.collections_count || 0} коллекций`">
+                            <i class="fa-solid fa-layer-group"></i>
+                            <span>{{ formatNumber(workspace.stats?.collections_count) }}</span>
+                        </div>
+                    </div>
+
                     <div class="card-meta">
                         <span v-if="workspace.is_current" class="badge current">
                             <i class="fa-solid fa-check"></i> Текущая
@@ -48,8 +65,19 @@
                     </div>
                 </div>
 
-                <div class="card-arrow">
-                    <i class="fa-solid fa-arrow-right"></i>
+                <!-- ✅ Кнопки действий -->
+                <div class="card-actions">
+                    <button
+                        type="button"
+                        class="card-action-btn"
+                        @click.stop="openInNewTab(workspace)"
+                        title="Открыть в новом окне"
+                    >
+                        <i class="fa-solid fa-up-right-from-square"></i>
+                    </button>
+                    <div class="card-arrow">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
                 </div>
             </div>
         </div>
@@ -92,6 +120,10 @@ export default {
             )
         }
     },
+    mounted() {
+        // ✅ Если статистики нет в данных — подгружаем
+        this.loadStatsIfNeeded()
+    },
     methods: {
         getInitials(workspace) {
             if (workspace.label) return workspace.label
@@ -104,6 +136,44 @@ export default {
             if (n === 1) return one
             if (n >= 2 && n <= 4) return two
             return five
+        },
+        formatNumber(num) {
+            if (num === null || num === undefined) return '0'
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'K'
+            }
+            return num.toString()
+        },
+        openInNewTab(workspace) {
+            // ✅ Открываем доску в новой вкладке
+            window.open(`/workspace/${workspace.uuid}`, '_blank')
+        },
+        async loadStatsIfNeeded() {
+            // Проверяем, есть ли статистика хотя бы у одного workspace
+            const hasStats = this.workspaces.some(w => w.stats)
+            if (hasStats) return
+
+            // Загружаем статистику для всех workspace'ов
+            try {
+                const uuids = this.workspaces
+                    .filter(w => !w.is_current)
+                    .map(w => w.uuid)
+
+                if (uuids.length === 0) return
+
+                const response = await axios.post('/api/workspaces/stats', { uuids })
+
+                // Мерджим статистику в workspaces
+                if (response.data?.stats) {
+                    this.workspaces.forEach(w => {
+                        if (response.data.stats[w.uuid]) {
+                            w.stats = response.data.stats[w.uuid]
+                        }
+                    })
+                }
+            } catch (error) {
+                console.error('Failed to load workspace stats:', error)
+            }
         }
     }
 }
@@ -230,16 +300,39 @@ export default {
     color: #212529;
     overflow: hidden;
     text-overflow: ellipsis;
-    /* white-space: break-spaces; */
     margin-bottom: 2px;
-    /* word-wrap: break-word; */
     word-break: break-all;
 }
 
 .card-label {
     font-size: 12px;
     color: #6c757d;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+}
+
+/* ✅ Статистика */
+.card-stats {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #495057;
+    font-weight: 500;
+}
+
+.stat-item i {
+    font-size: 10px;
+    color: #0d6efd;
+    opacity: 0.7;
 }
 
 .card-meta {
@@ -267,6 +360,41 @@ export default {
     color: #084298;
 }
 
+/* ✅ Блок действий */
+.card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.workspace-card:hover .card-actions {
+    opacity: 1;
+}
+
+.card-action-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.card-action-btn:hover {
+    background: #e7f1ff;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
 .card-arrow {
     width: 32px;
     height: 32px;
@@ -277,7 +405,6 @@ export default {
     justify-content: center;
     color: #6c757d;
     font-size: 12px;
-    flex-shrink: 0;
     transition: all 0.15s ease;
 }
 
@@ -314,6 +441,7 @@ export default {
     font-size: 13px;
 }
 
+/* ✅ Мобильная адаптация */
 @media (max-width: 768px) {
     .cards-grid {
         grid-template-columns: 1fr;
@@ -321,6 +449,19 @@ export default {
 
     .aggregator-title {
         font-size: 20px;
+    }
+
+    /* На мобильном кнопки всегда видны */
+    .card-actions {
+        opacity: 1;
+    }
+
+    .card-stats {
+        gap: 8px;
+    }
+
+    .stat-item {
+        font-size: 10px;
     }
 }
 </style>

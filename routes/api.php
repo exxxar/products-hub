@@ -30,6 +30,7 @@ use App\Http\Controllers\IngredientController;
 */
 
 Route::post('/workspaces', [WorkspaceController::class, 'store']);
+Route::post('/workspaces/stats', [WorkspaceLinkController::class, 'stats']);
 
 Route::prefix('workspaces/{uuid}')
     ->group(function () {
@@ -50,6 +51,7 @@ Route::prefix('workspaces/{uuid}')
                 Route::post('/unlink', [WorkspaceLinkController::class, 'unlink'])->middleware('master.unlocked');
                 Route::post('/create-and-link', [WorkspaceLinkController::class, 'createAndLink'])->middleware('master.unlocked');
                 Route::post('/find-by-uuid', [WorkspaceLinkController::class, 'findByUuid']);
+
 
                 Route::put('/visual', [WorkspaceVisualController::class, 'updateVisual'])->middleware('master.unlocked');
                 Route::post('/logo', [WorkspaceVisualController::class, 'uploadLogo'])->middleware('master.unlocked');
