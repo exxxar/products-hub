@@ -56,6 +56,7 @@ class WorkspaceLinkController extends Controller
         ]);
     }
 
+
     /**
      * Получить все связанные доски
      */
@@ -63,18 +64,27 @@ class WorkspaceLinkController extends Controller
     {
         $workspace = App::make('workspace');
 
-        // ✅ getLinkedWorkspaces() уже возвращает статистику (если обновил модель)
+        // ✅ Загружаем текущий workspace со счётчиками
+        $currentWorkspace = Workspace::where('id', $workspace->id)
+            ->withCount(['products', 'categories', 'collections'])
+            ->first();
+
         $linked = $workspace->getLinkedWorkspaces();
 
         return response()->json([
             'current' => [
-                'id' => $workspace->id,
-                'uuid' => $workspace->uuid,
-                'name' => $workspace->name,
-                'label' => $workspace->label,
-                'color' => $workspace->color,
-                'logo_url' => $workspace->logo_url,
-                'initials' => $workspace->initials,
+                'id' => $currentWorkspace->id,
+                'uuid' => $currentWorkspace->uuid,
+                'name' => $currentWorkspace->name,
+                'label' => $currentWorkspace->label,
+                'color' => $currentWorkspace->color,
+                'logo_url' => $currentWorkspace->logo_url,
+                'initials' => $currentWorkspace->initials,
+                'stats' => [ // ✅ Добавили статистику
+                    'products_count' => $currentWorkspace->products_count,
+                    'categories_count' => $currentWorkspace->categories_count,
+                    'collections_count' => $currentWorkspace->collections_count,
+                ],
             ],
             'linked' => $linked,
         ]);
