@@ -9,7 +9,6 @@ use App\Models\Workspace;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BotsMigrationSeeder extends Seeder
@@ -21,7 +20,7 @@ class BotsMigrationSeeder extends Seeder
     {
         $this->command->info('🚀 Начинаем миграцию ботов из bcash...');
 
-        // ✅ Отключаем observers на время миграции
+        // ✅ Отключаем observers для ускорения и избежания ошибок
         $this->disableObservers();
 
         $bots = DB::connection('bcash')
@@ -61,39 +60,14 @@ class BotsMigrationSeeder extends Seeder
         $this->command->info('✅ Миграция завершена!');
     }
 
-    /**
-     * Отключить observers для всех моделей
-     */
-    private function disableObservers(): void
-    {
-        \App\Models\Workspace::flushEventListeners();
-        \App\Models\Category::flushEventListeners();
-        \App\Models\Product::flushEventListeners();
-        \App\Models\ProductAttribute::flushEventListeners();
-
-        $this->command->info('⏸ Observers отключены для ускорения миграции');
-    }
-
-    /**
-     * Включить observers обратно
-     */
-    private function enableObservers(): void
-    {
-        // Перерегистрируем observers
-        \App\Models\Workspace::observe(\App\Observers\WorkspaceObserver::class);
-        \App\Models\Category::observe(\App\Observers\CategoryObserver::class);
-        \App\Models\Product::observe(\App\Observers\ProductObserver::class);
-
-        $this->command->info('▶ Observers включены обратно');
-    }
-
     private function migrateBot(object $bot): void
     {
         $uuid = (string) Str::uuid();
 
+        // ✅ Просто сохраняем внешнюю ссылку на логотип (без скачивания)
         $logoPath = null;
         if (!empty($bot->image) && $this->isValidUrl($bot->image)) {
-            $logoPath = $this->downloadImage($bot->image, "workspaces/{$uuid}");
+            $logoPath = $bot->image; // Сохраняем URL как есть
         }
 
         $settings = [
@@ -114,7 +88,7 @@ class BotsMigrationSeeder extends Seeder
             'uuid' => $uuid,
             'name' => $bot->title ?: $bot->bot_domain,
             'label' => $bot->title,
-            'logo_path' => $logoPath,
+            'logo_path' => $logoPath, // ✅ Внешний URL
             'description' => $bot->long_description ?: $bot->description,
             'url' => $bot->info_link,
             'settings' => $settings,
@@ -157,15 +131,13 @@ class BotsMigrationSeeder extends Seeder
             ->get();
 
         foreach ($products as $oldProduct) {
+            // ✅ Просто берем внешние ссылки на картинки (без скачивания)
             $images = json_decode($oldProduct->images ?? '[]', true) ?: [];
             $localImages = [];
+
             foreach ($images as $imgUrl) {
-                // ✅ Проверяем валидность URL
                 if ($this->isValidUrl($imgUrl)) {
-                    $path = $this->downloadImage($imgUrl, "products/{$oldProduct->id}");
-                    if ($path) {
-                        $localImages[] = $path;
-                    }
+                    $localImages[] = $imgUrl; // Сохраняем URL как есть
                 }
             }
 
@@ -184,7 +156,7 @@ class BotsMigrationSeeder extends Seeder
                 'old_price' => $oldProduct->old_price ?: 0,
                 'sku' => $oldProduct->article,
                 'description' => $oldProduct->description,
-                'images' => $localImages,
+                'images' => $localImages, // ✅ Массив внешних URL
                 'dimensions' => json_decode($oldProduct->dimension ?? '{}', true),
                 'config' => $config,
                 'is_active' => is_null($oldProduct->deleted_at),
@@ -281,55 +253,46 @@ class BotsMigrationSeeder extends Seeder
         $this->command->line(str_repeat('-', 80));
     }
 
-    /**
-     * ✅ НОВАЯ МЕТОД: Проверка валидности URL
-     */
     private function isValidUrl(string $url): bool
     {
         return filter_var($url, FILTER_VALIDATE_URL) !== false;
-    }
-
-    private function downloadImage(string $url, string $directory): ?string
-    {
-        try {
-            $context = stream_context_create([
-                'http' => [
-                    'timeout' => 15,
-                    'user_agent' => 'Mozilla/5.0 (compatible; MigrationBot/1.0)',
-                ],
-                'https' => [
-                    'timeout' => 15,
-                    'user_agent' => 'Mozilla/5.0 (compatible; MigrationBot/1.0)',
-                ],
-            ]);
-
-            $content = @file_get_contents($url, false, $context);
-            if ($content === false) {
-                $this->command->warn("  ⚠ Не удалось скачать: {$url}");
-                return null;
-            }
-
-            $pathInfo = pathinfo(parse_url($url, PHP_URL_PATH) ?? '');
-            $ext = strtolower($pathInfo['extension'] ?? 'jpg');
-            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
-                $ext = 'jpg';
-            }
-
-            $filename = Str::uuid() . '.' . $ext;
-            $fullPath = "{$directory}/{$filename}";
-
-            Storage::disk('public')->put($fullPath, $content);
-
-            return $fullPath;
-        } catch (\Throwable $e) {
-            $this->command->warn("  ⚠ Ошибка скачивания {$url}: " . $e->getMessage());
-            return null;
-        }
     }
 
     private function randomColor(): string
     {
         $colors = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545', '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'];
         return $colors[array_rand($colors)];
+    }
+
+    /**
+     * Отключить observers для всех моделей
+     */
+    private function disableObservers(): void
+    {
+        \App\Models\Workspace::flushEventListeners();
+        \App\Models\Category::flushEventListeners();
+        \App\Models\Product::flushEventListeners();
+        \App\Models\ProductAttribute::flushEventListeners();
+
+        $this->command->info('⏸ Observers отключены для ускорения миграции');
+    }
+
+    /**
+     * Включить observers обратно
+     */
+    private function enableObservers(): void
+    {
+        // Перерегистрируем observers (если они есть)
+        if (class_exists(\App\Observers\WorkspaceObserver::class)) {
+            \App\Models\Workspace::observe(\App\Observers\WorkspaceObserver::class);
+        }
+        if (class_exists(\App\Observers\CategoryObserver::class)) {
+            \App\Models\Category::observe(\App\Observers\CategoryObserver::class);
+        }
+        if (class_exists(\App\Observers\ProductObserver::class)) {
+            \App\Models\Product::observe(\App\Observers\ProductObserver::class);
+        }
+
+        $this->command->info('▶ Observers включены обратно');
     }
 }

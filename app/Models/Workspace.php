@@ -119,7 +119,18 @@ class Workspace extends Model
     public function getLogoUrlAttribute(): ?string
     {
         $path = $this->logo_path;
-        return $path ? Storage::url($path) : null;
+
+        if (!$path) {
+            return null;
+        }
+
+        // ✅ Если это внешний URL (начинается с http), возвращаем как есть
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        // Иначе это локальный путь — генерируем URL через Storage
+        return Storage::url($path);
     }
 
     public function getLabelAttribute(): ?string
