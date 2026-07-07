@@ -21,6 +21,9 @@ class BotsMigrationSeeder extends Seeder
     {
         $this->command->info('🚀 Начинаем миграцию ботов из bcash...');
 
+        // ✅ Отключаем observers на время миграции
+        $this->disableObservers();
+
         $bots = DB::connection('bcash')
             ->table('bots')
             ->whereNull('deleted_at')
@@ -28,7 +31,6 @@ class BotsMigrationSeeder extends Seeder
 
         $this->command->info("Найдено ботов для миграции: {$bots->count()}");
 
-        // ✅ ПРАВИЛЬНОЕ создание прогресс-бара
         $bar = $this->command->getOutput()->createProgressBar($bots->count());
         $bar->start();
 
@@ -53,7 +55,36 @@ class BotsMigrationSeeder extends Seeder
         $this->linkWorkspacesByCompany($companyGroups);
         $this->outputWorkspaceLinks();
 
+        // ✅ Включаем observers обратно
+        $this->enableObservers();
+
         $this->command->info('✅ Миграция завершена!');
+    }
+
+    /**
+     * Отключить observers для всех моделей
+     */
+    private function disableObservers(): void
+    {
+        \App\Models\Workspace::flushEventListeners();
+        \App\Models\Category::flushEventListeners();
+        \App\Models\Product::flushEventListeners();
+        \App\Models\ProductAttribute::flushEventListeners();
+
+        $this->command->info('⏸ Observers отключены для ускорения миграции');
+    }
+
+    /**
+     * Включить observers обратно
+     */
+    private function enableObservers(): void
+    {
+        // Перерегистрируем observers
+        \App\Models\Workspace::observe(\App\Observers\WorkspaceObserver::class);
+        \App\Models\Category::observe(\App\Observers\CategoryObserver::class);
+        \App\Models\Product::observe(\App\Observers\ProductObserver::class);
+
+        $this->command->info('▶ Observers включены обратно');
     }
 
     private function migrateBot(object $bot): void
