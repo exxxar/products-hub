@@ -177,7 +177,7 @@ export default {
 
 .workspace-card {
     display: flex;
-    align-items: center;
+    align-items: self-start;
     gap: 14px;
     padding: 18px;
     background: #fff;
@@ -230,8 +230,10 @@ export default {
     color: #212529;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    /* white-space: break-spaces; */
     margin-bottom: 2px;
+    /* word-wrap: break-word; */
+    word-break: break-all;
 }
 
 .card-label {

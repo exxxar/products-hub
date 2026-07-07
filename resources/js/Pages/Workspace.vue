@@ -883,7 +883,7 @@ export default {
 .workspace-content {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 24px 24px 70px 24px;
 }
 
 .section-header {
