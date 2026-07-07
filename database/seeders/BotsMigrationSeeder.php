@@ -9,6 +9,7 @@ use App\Models\Workspace;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BotsMigrationSeeder extends Seeder
@@ -16,6 +17,9 @@ class BotsMigrationSeeder extends Seeder
     private array $categoryMap = [];
     private array $workspaceMap = [];
     private ?Workspace $mainWorkspace = null;
+
+    // ✅ Базовый URL для скачивания иконок ботов
+    private const BOT_IMAGE_BASE_URL = 'https://your-cashman.com/images-by-bot-id';
 
     public function run(): void
     {
@@ -49,7 +53,7 @@ class BotsMigrationSeeder extends Seeder
         $bar->finish();
         $this->command->newLine(2);
 
-        // ✅ Создаем главный workspace и связываем все остальные с ним
+        // ✅ Создаём главный workspace и связываем все остальные с ним (двусторонняя связь)
         $this->createMainWorkspaceAndLinkAll();
 
         $this->outputWorkspaceLinks();
@@ -63,11 +67,8 @@ class BotsMigrationSeeder extends Seeder
     {
         $uuid = (string) Str::uuid();
 
-        // ✅ Просто сохраняем внешнюю ссылку на логотип (без скачивания)
-        $logoPath = null;
-        if (!empty($bot->image)) {
-            $logoPath = $bot->image; // Сохраняем URL как есть
-        }
+        // ✅ Выкачиваем иконку бота в storage
+        $logoPath = $this->downloadBotLogo($bot);
 
         $settings = [
             'visual' => [
@@ -87,7 +88,7 @@ class BotsMigrationSeeder extends Seeder
             'uuid' => $uuid,
             'name' => $bot->title ?: $bot->bot_domain,
             'label' => $bot->title,
-            'logo_path' => $logoPath,
+            'logo_path' => $logoPath, // ✅ Локальный путь в storage
             'description' => $bot->long_description ?: $bot->description,
             'url' => $bot->info_link,
             'settings' => $settings,
@@ -100,6 +101,61 @@ class BotsMigrationSeeder extends Seeder
 
         $this->migrateCategories($bot->id, $workspace);
         $this->migrateProducts($bot->id, $workspace);
+    }
+
+    /**
+     * ✅ Скачивание иконки бота в storage
+     */
+    private function downloadBotLogo(object $bot): ?string
+    {
+        if (empty($bot->image)) {
+            return null;
+        }
+
+        try {
+            // Формируем URL: если это уже полный URL — используем как есть,
+            // иначе конструируем из base URL + bot_id + filename
+            if (str_starts_with($bot->image, 'http://') || str_starts_with($bot->image, 'https://')) {
+                $imageUrl = $bot->image;
+            } else {
+                $imageUrl = self::BOT_IMAGE_BASE_URL . '/' . $bot->id . '/' . $bot->image;
+            }
+
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15,
+                    'user_agent' => 'Mozilla/5.0 (compatible; MigrationBot/1.0)',
+                ],
+                'https' => [
+                    'timeout' => 15,
+                    'user_agent' => 'Mozilla/5.0 (compatible; MigrationBot/1.0)',
+                ],
+            ]);
+
+            $content = @file_get_contents($imageUrl, false, $context);
+            if ($content === false) {
+                $this->command->warn("  ⚠ Не удалось скачать иконку для бота #{$bot->id}: {$imageUrl}");
+                return null;
+            }
+
+            // Определяем расширение
+            $ext = pathinfo($bot->image, PATHINFO_EXTENSION);
+            $ext = strtolower($ext);
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                $ext = 'jpg';
+            }
+
+            // Сохраняем в storage: workspaces/{uuid}/logo.{ext}
+            $filename = 'logo.' . $ext;
+            $fullPath = "workspaces/{$bot->id}/{$filename}";
+
+            Storage::disk('public')->put($fullPath, $content);
+
+            return $fullPath;
+        } catch (\Throwable $e) {
+            $this->command->warn("  ⚠ Ошибка скачивания иконки бота #{$bot->id}: " . $e->getMessage());
+            return null;
+        }
     }
 
     private function migrateCategories(int $botId, Workspace $workspace): void
@@ -130,12 +186,11 @@ class BotsMigrationSeeder extends Seeder
             ->get();
 
         foreach ($products as $oldProduct) {
-            // ✅ Просто берем внешние ссылки на картинки (без скачивания)
+            // ✅ Картинки товаров — оставляем внешние URL (не скачиваем)
             $images = json_decode($oldProduct->images ?? '[]', true) ?: [];
             $localImages = [];
 
             foreach ($images as $imgUrl) {
-                // ✅ Проверяем, что $imgUrl не null и не пустая строка
                 if ($this->isValidUrl($imgUrl)) {
                     $localImages[] = $imgUrl;
                 }
@@ -207,13 +262,15 @@ class BotsMigrationSeeder extends Seeder
     }
 
     /**
-     * ✅ Создаем главный workspace и связываем с ним все остальные
+     * ✅ Создаём главный workspace и связываем с ним ВСЕ остальные
+     * linkWorkspace() делает двустороннюю связь:
+     *   - в linked_workspaces главного добавляются UUID всех остальных
+     *   - в linked_workspaces каждого обычного добавляется UUID главного
      */
     private function createMainWorkspaceAndLinkAll(): void
     {
-        $this->command->info('🔗 Создаем главный workspace и связываем все остальные...');
+        $this->command->info('🔗 Создаём главный workspace и связываем все остальные...');
 
-        // Создаем главный workspace
         $mainUuid = (string) Str::uuid();
         $this->mainWorkspace = Workspace::create([
             'uuid' => $mainUuid,
@@ -225,19 +282,20 @@ class BotsMigrationSeeder extends Seeder
                     'color' => '#0d6efd',
                 ],
                 'is_main' => true,
+                'display_mode' => 'workspaces', // ✅ Сразу включаем режим агрегатора
             ],
         ]);
 
         $this->command->info("  Создан главный workspace: {$this->mainWorkspace->name} (UUID: {$mainUuid})");
 
-        // Связываем все остальные workspace'ы с главным
+        // ✅ Связываем все workspace'ы с главным (двусторонняя связь)
         $linkedCount = 0;
         foreach ($this->workspaceMap as $botId => $workspace) {
             $this->mainWorkspace->linkWorkspace($workspace->uuid);
             $linkedCount++;
         }
 
-        $this->command->info("  Связано {$linkedCount} workspace'ов с главным");
+        $this->command->info("  Связано {$linkedCount} workspace'ов с главным (двусторонняя связь)");
     }
 
     private function outputWorkspaceLinks(): void
@@ -246,16 +304,14 @@ class BotsMigrationSeeder extends Seeder
         $this->command->info('📋 Ссылки на созданные воркспейсы:');
         $this->command->line(str_repeat('-', 80));
 
-        // ✅ Сначала выводим главный workspace
         if ($this->mainWorkspace) {
             $url = $this->mainWorkspace->getAccessUrl();
-            $this->command->line("  ⭐ ГЛАВНЫЙ WORKSPACE");
+            $this->command->line("  ⭐ ГЛАВНЫЙ WORKSPACE (АГРЕГАТОР)");
             $this->command->line("    URL: {$url}");
             $this->command->line("    UUID: {$this->mainWorkspace->uuid}");
             $this->command->newLine();
         }
 
-        // Потом все остальные
         foreach ($this->workspaceMap as $botId => $workspace) {
             $url = $workspace->getAccessUrl();
             $this->command->line("  [Bot #{$botId}] {$workspace->name}");
@@ -268,9 +324,6 @@ class BotsMigrationSeeder extends Seeder
         $this->command->line(str_repeat('-', 80));
     }
 
-    /**
-     * ✅ Исправлено: принимаем nullable string
-     */
     private function isValidUrl(?string $url): bool
     {
         if ($url === null || $url === '') {

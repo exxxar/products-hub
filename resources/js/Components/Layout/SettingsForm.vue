@@ -56,6 +56,37 @@
                 </small>
             </div>
 
+            <!-- Вкладка base, после "Информация о workspace" -->
+            <div class="field-group">
+                <label class="field-label">Режим отображения</label>
+                <div class="display-mode-switcher">
+                    <button
+                        type="button"
+                        class="mode-btn"
+                        :class="{ active: localForm.display_mode === 'products' }"
+                        @click="localForm.display_mode = 'products'"
+                    >
+                        <i class="fa-solid fa-box-open"></i>
+                        <span>Товары</span>
+                        <small>Отображение каталога товаров</small>
+                    </button>
+                    <button
+                        type="button"
+                        class="mode-btn"
+                        :class="{ active: localForm.display_mode === 'workspaces' }"
+                        @click="localForm.display_mode = 'workspaces'"
+                    >
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>Агрегатор досок</span>
+                        <small>Карточки связанных workspace'ов</small>
+                    </button>
+                </div>
+                <small class="field-hint">
+                    <i class="fa-solid fa-circle-info"></i>
+                    В режиме "Агрегатор" на главной будут отображаться карточки связанных досок
+                </small>
+            </div>
+
             <div class="field-group">
                 <label class="field-label">URL сайта</label>
                 <input
@@ -499,6 +530,7 @@ export default {
                 name: '',
                 description: '',
                 url: '',
+                display_mode: 'products',
                 visual: {
                     label: '',
                     color: '#0d6efd'
@@ -576,6 +608,7 @@ export default {
                 name: this.store.name || '',
                 description: this.store.description || '',
                 url: this.store.url || '',
+                display_mode: this.store.settings?.display_mode || 'products',
                 visual: {
                     label: this.store.settings?.visual?.label || '',
                     color: this.store.color || '#0d6efd',
@@ -602,6 +635,7 @@ export default {
             this.localForm.description = data.description || ''
             this.localForm.url = data.url || ''
             this.localForm.vk_shop_links = data.vk_shop_links || ''
+            this.localForm.display_mode = data.display_mode || 'products'
 
             this.localForm.visual = {
                 label: data.visual?.label || '',
@@ -1922,6 +1956,69 @@ export default {
     }
 
     .visual-fields {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Стили для переключателя */
+.display-mode-switcher {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 20px 16px;
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.mode-btn i {
+    font-size: 28px;
+    color: #6c757d;
+    transition: color 0.15s ease;
+}
+
+.mode-btn span {
+    font-size: 14px;
+    font-weight: 600;
+    color: #212529;
+}
+
+.mode-btn small {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 400;
+}
+
+.mode-btn:hover {
+    border-color: #0d6efd;
+    background: #f8f9ff;
+}
+
+.mode-btn:hover i {
+    color: #0d6efd;
+}
+
+.mode-btn.active {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+}
+
+.mode-btn.active i {
+    color: #0d6efd;
+}
+
+@media (max-width: 576px) {
+    .display-mode-switcher {
         grid-template-columns: 1fr;
     }
 }

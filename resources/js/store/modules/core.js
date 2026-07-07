@@ -11,9 +11,11 @@ export default {
         settings: {},
         isLoading: false,
         error: null,
-
+        displayMode: 'products', // ✅ НОВОЕ: 'products' | 'workspaces'
     }),
-
+    getters: {
+        isWorkspaceAggregator: (state) => state.displayMode === 'workspaces',
+    },
     actions: {
         setUuid(uuid) {
             this.uuid = uuid
@@ -36,6 +38,19 @@ export default {
         },
         setSettings(settings) {
             this.settings = settings || {}
+        },
+        // ✅ НОВОЕ: Переключение режима
+        setDisplayMode(mode) {
+            this.displayMode = mode
+            // Сохраняем в settings на бэкенде
+            if (this.uuid) {
+                axios.put(`/api/workspaces/${this.uuid}`, {
+                    settings: {
+                        ...this.settings,
+                        display_mode: mode
+                    }
+                }).catch(e => console.error('Save display mode failed:', e))
+            }
         },
         async uploadWorkspaceLogo(file) {
             const formData = new FormData()
@@ -68,6 +83,7 @@ export default {
                 this.collections = data.collections || []
                 this.webhooks = data.webhooks || []
                 this.ingredientGroups = data.ingredient_groups || []
+                this.displayMode = this.settings?.display_mode || 'products'
 
                 return data
             } catch (error) {

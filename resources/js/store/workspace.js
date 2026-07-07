@@ -19,9 +19,14 @@ import wLinked from './modules/workspace-linked.js'
  */
 function mergeModules(...modules) {
     const merged = {
-        state: () => ({}),
-        getters: {},
+        state: () => ({
+
+        }),
+        getters: {
+
+        },
         actions: {
+
         },
     }
 

@@ -4,6 +4,7 @@
 
         <NotifyContainer/>
 
+
         <div class="workspace-topbar">
             <WorkspaceSwitcher
                 @open-create-group="openCreateGroup"
@@ -20,6 +21,7 @@
                 @open-menu-generator="openMenuGenerator"
             />
         </div>
+
 
         <!-- Модалка авторизации -->
         <PasswordModal
@@ -42,104 +44,116 @@
 
             <!-- Основной контент -->
             <div class="workspace-content">
-                <!-- Режим сетки -->
-                <template v-if="viewMode === 'grid'">
-                    <ProductGrid
-                        :selectedIds="store.selectedIds"
-                        @create-product="openCreateProduct"
-                        @edit-product="openEditProduct"
-                        @toggle-select="toggleSelect"
-                        @toggle-stop-list="handleToggleStopList"
+
+                <!-- ✅ РЕЖИМ АГРЕГАТОРА -->
+                <template v-if="store.isWorkspaceAggregator">
+                    <WorkspaceCardsGrid
+                        :workspaces="allWorkspaces"
+                        @select="goToWorkspace"
                     />
                 </template>
 
-                <!-- Режим таблицы -->
-                <template v-else-if="viewMode === 'table'">
-                    <ProductTable
-                        :products="store.products"
-                        :selectedIds="store.selectedIds"
-                        @edit-product="openEditProduct"
-                        @toggle-select="toggleSelect"
-                        @clear-selection="clearSelection"
-                        @select-many="selectMany"
-                    />
-                </template>
+                <!-- РЕЖИМ ТОВАРОВ (по умолчанию) -->
+                <template v-else>
+                    <!-- Режим сетки -->
+                    <template v-if="viewMode === 'grid'">
+                        <ProductGrid
+                            :selectedIds="store.selectedIds"
+                            @create-product="openCreateProduct"
+                            @edit-product="openEditProduct"
+                            @toggle-select="toggleSelect"
+                            @toggle-stop-list="handleToggleStopList"
+                        />
+                    </template>
 
-                <!-- Режим категорий -->
-                <template v-else-if="viewMode === 'categories'">
-                    <div class="categories-view">
-                        <h5 class="categories-title">Группировка по категориям</h5>
-                        <template v-if="selectedCategory">
-                            <div class="category-header-with-back">
-                                <button
-                                    type="button"
-                                    class="btn-back"
-                                    @click="selectedCategory = null"
-                                >
-                                    <i class="fa-solid fa-arrow-left"></i>
-                                    Все категории
-                                </button>
-                            </div>
+                    <!-- Режим таблицы -->
+                    <template v-else-if="viewMode === 'table'">
+                        <ProductTable
+                            :products="store.products"
+                            :selectedIds="store.selectedIds"
+                            @edit-product="openEditProduct"
+                            @toggle-select="toggleSelect"
+                            @clear-selection="clearSelection"
+                            @select-many="selectMany"
+                        />
+                    </template>
 
-                            <!-- Индикатор загрузки -->
-                            <div v-if="store.categoryProductsLoading" class="loading-state">
-                                <i class="fa-solid fa-spinner fa-spin"></i>
-                                <p>Загрузка товаров...</p>
-                            </div>
-
-                            <!-- Пустое состояние -->
-                            <div v-else-if="store.selectedCategoryProducts.length === 0" class="empty-category">
-                                <i class="fa-solid fa-folder-open"></i>
-                                <h6>В категории "{{ selectedCategory.name }}" нет товаров</h6>
-                                <p>Добавьте товары в эту категорию или выберите другую</p>
-                            </div>
-
-                            <!-- Товары -->
-                            <ProductGrid
-                                v-else
-                                :products="store.selectedCategoryProducts"
-                                :selectedIds="store.selectedIds"
-                                @edit-product="openEditProduct"
-                                @toggle-select="toggleSelect"
-                                @toggle-stop-list="handleToggleStopList"
-                            />
-                        </template>
-
-                        <template v-else>
-                            <div v-if="store.categories.length === 0" class="empty-state">
-                                <i class="fa-solid fa-folder-open"></i>
-                                <p>Категории не созданы</p>
-                            </div>
-
-                            <div v-else v-for="cat in store.categories" :key="cat.id" class="category-group">
-                                <div class="category-header">
-                                    <h6 class="category-name">{{ cat.name }}</h6>
-                                    <span class="category-count">
-
-                                  {{ cat.products_count }} товаров
-                            </span>
+                    <!-- Режим категорий -->
+                    <template v-else-if="viewMode === 'categories'">
+                        <div class="categories-view">
+                            <h5 class="categories-title">Группировка по категориям</h5>
+                            <template v-if="selectedCategory">
+                                <div class="category-header-with-back">
+                                    <button
+                                        type="button"
+                                        class="btn-back"
+                                        @click="selectedCategory = null"
+                                    >
+                                        <i class="fa-solid fa-arrow-left"></i>
+                                        Все категории
+                                    </button>
                                 </div>
 
+                                <!-- Индикатор загрузки -->
+                                <div v-if="store.categoryProductsLoading" class="loading-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <p>Загрузка товаров...</p>
+                                </div>
+
+                                <!-- Пустое состояние -->
+                                <div v-else-if="store.selectedCategoryProducts.length === 0" class="empty-category">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                    <h6>В категории "{{ selectedCategory.name }}" нет товаров</h6>
+                                    <p>Добавьте товары в эту категорию или выберите другую</p>
+                                </div>
+
+                                <!-- Товары -->
                                 <ProductGrid
-                                    :products="getProductsByCategory(cat.id)"
+                                    v-else
+                                    :products="store.selectedCategoryProducts"
                                     :selectedIds="store.selectedIds"
-                                    @create-product="openCreateProduct"
                                     @edit-product="openEditProduct"
                                     @toggle-select="toggleSelect"
                                     @toggle-stop-list="handleToggleStopList"
                                 />
-                            </div>
-                        </template>
+                            </template>
+
+                            <template v-else>
+                                <div v-if="store.categories.length === 0" class="empty-state">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                    <p>Категории не созданы</p>
+                                </div>
+
+                                <div v-else v-for="cat in store.categories" :key="cat.id" class="category-group">
+                                    <div class="category-header">
+                                        <h6 class="category-name">{{ cat.name }}</h6>
+                                        <span class="category-count">
+
+                                  {{ cat.products_count }} товаров
+                            </span>
+                                    </div>
+
+                                    <ProductGrid
+                                        :products="getProductsByCategory(cat.id)"
+                                        :selectedIds="store.selectedIds"
+                                        @create-product="openCreateProduct"
+                                        @edit-product="openEditProduct"
+                                        @toggle-select="toggleSelect"
+                                        @toggle-stop-list="handleToggleStopList"
+                                    />
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Пустое состояние -->
+                    <div v-if="store.products.length === 0 && !needPassword" class="empty-state-main ">
+                        <i class="fa-solid fa-box-open"></i>
+                        <h5>Нет товаров</h5>
+                        <p>Добавьте первый товар или импортируйте из другого источника</p>
+
                     </div>
                 </template>
-
-                <!-- Пустое состояние -->
-                <div v-if="store.products.length === 0 && !needPassword" class="empty-state-main ">
-                    <i class="fa-solid fa-box-open"></i>
-                    <h5>Нет товаров</h5>
-                    <p>Добавьте первый товар или импортируйте из другого источника</p>
-
-                </div>
             </div>
 
         </div>
@@ -250,10 +264,13 @@ import WorkspaceCreateModal from '@/Components/Groups/WorkspaceCreateModal.vue'
 import PwaInstallModal from '@/Components/Layout/PwaInstallModal.vue'
 import WorkspaceFooter from '@/Components/Layout/WorkspaceFooter.vue'
 
+import WorkspaceCardsGrid from '@/Components/Groups/WorkspaceCardsGrid.vue'
+
 export default {
     name: 'Workspace',
 
     components: {
+        WorkspaceCardsGrid,
         PwaInstallModal,
         NotifyContainer,
         WorkspaceSwitcher,
@@ -308,6 +325,20 @@ export default {
         }
     },
     computed: {
+
+        allWorkspaces() {
+            // Текущий workspace + связанные
+            const current = {
+                id: this.store.id,
+                uuid: this.store.uuid,
+                name: this.store.name,
+                label: this.store.settings?.visual?.label,
+                color: this.store.color,
+                logo_url: this.store.logo_url,
+                is_current: true
+            }
+            return [current, ...this.store.linkedWorkspaces]
+        },
         store() {
             return useWorkspaceStore()
         },
@@ -364,6 +395,10 @@ export default {
             ])
         }
 
+        if (this.store.isWorkspaceAggregator) {
+            this.store.loadLinkedWorkspaces()
+        }
+
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault()
             this.deferredPrompt = e
@@ -381,6 +416,10 @@ export default {
         this.store.stopPresenceTracking()
     },
     methods: {
+        goToWorkspace(workspace) {
+            if (workspace.is_current) return
+            this.store.switchWorkspace(workspace.uuid)
+        },
         openCreateGroup() {
             this.$refs.workspaceGroupModal.show()
         },
