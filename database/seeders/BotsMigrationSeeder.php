@@ -15,12 +15,12 @@ class BotsMigrationSeeder extends Seeder
 {
     private array $categoryMap = [];
     private array $workspaceMap = [];
+    private ?Workspace $mainWorkspace = null;
 
     public function run(): void
     {
         $this->command->info('🚀 Начинаем миграцию ботов из bcash...');
 
-        // ✅ Отключаем observers для ускорения и избежания ошибок
         $this->disableObservers();
 
         $bots = DB::connection('bcash')
@@ -32,8 +32,6 @@ class BotsMigrationSeeder extends Seeder
 
         $bar = $this->command->getOutput()->createProgressBar($bots->count());
         $bar->start();
-
-        $companyGroups = $bots->groupBy('company_id');
 
         foreach ($bots as $bot) {
             try {
@@ -51,10 +49,11 @@ class BotsMigrationSeeder extends Seeder
         $bar->finish();
         $this->command->newLine(2);
 
-        $this->linkWorkspacesByCompany($companyGroups);
+        // ✅ Создаем главный workspace и связываем все остальные с ним
+        $this->createMainWorkspaceAndLinkAll();
+
         $this->outputWorkspaceLinks();
 
-        // ✅ Включаем observers обратно
         $this->enableObservers();
 
         $this->command->info('✅ Миграция завершена!');
@@ -66,7 +65,7 @@ class BotsMigrationSeeder extends Seeder
 
         // ✅ Просто сохраняем внешнюю ссылку на логотип (без скачивания)
         $logoPath = null;
-        if (!empty($bot->image) && $this->isValidUrl($bot->image)) {
+        if (!empty($bot->image)) {
             $logoPath = $bot->image; // Сохраняем URL как есть
         }
 
@@ -88,7 +87,7 @@ class BotsMigrationSeeder extends Seeder
             'uuid' => $uuid,
             'name' => $bot->title ?: $bot->bot_domain,
             'label' => $bot->title,
-            'logo_path' => $logoPath, // ✅ Внешний URL
+            'logo_path' => $logoPath,
             'description' => $bot->long_description ?: $bot->description,
             'url' => $bot->info_link,
             'settings' => $settings,
@@ -136,8 +135,9 @@ class BotsMigrationSeeder extends Seeder
             $localImages = [];
 
             foreach ($images as $imgUrl) {
+                // ✅ Проверяем, что $imgUrl не null и не пустая строка
                 if ($this->isValidUrl($imgUrl)) {
-                    $localImages[] = $imgUrl; // Сохраняем URL как есть
+                    $localImages[] = $imgUrl;
                 }
             }
 
@@ -156,7 +156,7 @@ class BotsMigrationSeeder extends Seeder
                 'old_price' => $oldProduct->old_price ?: 0,
                 'sku' => $oldProduct->article,
                 'description' => $oldProduct->description,
-                'images' => $localImages, // ✅ Массив внешних URL
+                'images' => $localImages,
                 'dimensions' => json_decode($oldProduct->dimension ?? '{}', true),
                 'config' => $config,
                 'is_active' => is_null($oldProduct->deleted_at),
@@ -206,33 +206,38 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    private function linkWorkspacesByCompany($companyGroups): void
+    /**
+     * ✅ Создаем главный workspace и связываем с ним все остальные
+     */
+    private function createMainWorkspaceAndLinkAll(): void
     {
-        $this->command->info('🔗 Связываем воркспейсы по company_id...');
+        $this->command->info('🔗 Создаем главный workspace и связываем все остальные...');
 
-        foreach ($companyGroups as $companyId => $groupBots) {
-            if ($groupBots->count() < 2) {
-                continue;
-            }
+        // Создаем главный workspace
+        $mainUuid = (string) Str::uuid();
+        $this->mainWorkspace = Workspace::create([
+            'uuid' => $mainUuid,
+            'name' => 'Главный',
+            'label' => 'Главный',
+            'settings' => [
+                'visual' => [
+                    'label' => 'Главный',
+                    'color' => '#0d6efd',
+                ],
+                'is_main' => true,
+            ],
+        ]);
 
-            $uuids = [];
-            foreach ($groupBots as $bot) {
-                if (isset($this->workspaceMap[$bot->id])) {
-                    $uuids[] = $this->workspaceMap[$bot->id]->uuid;
-                }
-            }
+        $this->command->info("  Создан главный workspace: {$this->mainWorkspace->name} (UUID: {$mainUuid})");
 
-            for ($i = 0; $i < count($uuids); $i++) {
-                for ($j = $i + 1; $j < count($uuids); $j++) {
-                    $ws1 = Workspace::where('uuid', $uuids[$i])->first();
-                    if ($ws1) {
-                        $ws1->linkWorkspace($uuids[$j]);
-                    }
-                }
-            }
-
-            $this->command->info("  Связано {$groupBots->count()} воркспейсов для company_id={$companyId}");
+        // Связываем все остальные workspace'ы с главным
+        $linkedCount = 0;
+        foreach ($this->workspaceMap as $botId => $workspace) {
+            $this->mainWorkspace->linkWorkspace($workspace->uuid);
+            $linkedCount++;
         }
+
+        $this->command->info("  Связано {$linkedCount} workspace'ов с главным");
     }
 
     private function outputWorkspaceLinks(): void
@@ -241,6 +246,16 @@ class BotsMigrationSeeder extends Seeder
         $this->command->info('📋 Ссылки на созданные воркспейсы:');
         $this->command->line(str_repeat('-', 80));
 
+        // ✅ Сначала выводим главный workspace
+        if ($this->mainWorkspace) {
+            $url = $this->mainWorkspace->getAccessUrl();
+            $this->command->line("  ⭐ ГЛАВНЫЙ WORKSPACE");
+            $this->command->line("    URL: {$url}");
+            $this->command->line("    UUID: {$this->mainWorkspace->uuid}");
+            $this->command->newLine();
+        }
+
+        // Потом все остальные
         foreach ($this->workspaceMap as $botId => $workspace) {
             $url = $workspace->getAccessUrl();
             $this->command->line("  [Bot #{$botId}] {$workspace->name}");
@@ -253,8 +268,14 @@ class BotsMigrationSeeder extends Seeder
         $this->command->line(str_repeat('-', 80));
     }
 
-    private function isValidUrl(string $url): bool
+    /**
+     * ✅ Исправлено: принимаем nullable string
+     */
+    private function isValidUrl(?string $url): bool
     {
+        if ($url === null || $url === '') {
+            return false;
+        }
         return filter_var($url, FILTER_VALIDATE_URL) !== false;
     }
 
@@ -264,9 +285,6 @@ class BotsMigrationSeeder extends Seeder
         return $colors[array_rand($colors)];
     }
 
-    /**
-     * Отключить observers для всех моделей
-     */
     private function disableObservers(): void
     {
         \App\Models\Workspace::flushEventListeners();
@@ -277,12 +295,8 @@ class BotsMigrationSeeder extends Seeder
         $this->command->info('⏸ Observers отключены для ускорения миграции');
     }
 
-    /**
-     * Включить observers обратно
-     */
     private function enableObservers(): void
     {
-        // Перерегистрируем observers (если они есть)
         if (class_exists(\App\Observers\WorkspaceObserver::class)) {
             \App\Models\Workspace::observe(\App\Observers\WorkspaceObserver::class);
         }
