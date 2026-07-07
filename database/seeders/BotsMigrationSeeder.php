@@ -14,21 +14,13 @@ use Illuminate\Support\Str;
 
 class BotsMigrationSeeder extends Seeder
 {
-    /**
-     * Маппинг: old_category_id => new_category_id (в рамках одного воркспейса)
-     */
     private array $categoryMap = [];
-
-    /**
-     * Маппинг: old_bot_id => Workspace model
-     */
     private array $workspaceMap = [];
 
     public function run(): void
     {
         $this->command->info('🚀 Начинаем миграцию ботов из bcash...');
 
-        // Получаем всех активных ботов
         $bots = DB::connection('bcash')
             ->table('bots')
             ->whereNull('deleted_at')
@@ -36,9 +28,10 @@ class BotsMigrationSeeder extends Seeder
 
         $this->command->info("Найдено ботов для миграции: {$bots->count()}");
 
-        $bar = $this->command->getOutput()->progressStart($bots->count());
+        // ✅ ПРАВИЛЬНОЕ создание прогресс-бара
+        $bar = $this->command->getOutput()->createProgressBar($bots->count());
+        $bar->start();
 
-        // Группируем по company_id для последующей линковки
         $companyGroups = $bots->groupBy('company_id');
 
         foreach ($bots as $bot) {
@@ -57,29 +50,21 @@ class BotsMigrationSeeder extends Seeder
         $bar->finish();
         $this->command->newLine(2);
 
-        // Линкуем воркспейсы по company_id
         $this->linkWorkspacesByCompany($companyGroups);
-
-        // Выводим ссылки
         $this->outputWorkspaceLinks();
 
         $this->command->info('✅ Миграция завершена!');
     }
 
-    /**
-     * Миграция одного бота
-     */
     private function migrateBot(object $bot): void
     {
         $uuid = (string) Str::uuid();
 
-        // Скачиваем логотип
         $logoPath = null;
-        if (!empty($bot->image)) {
+        if (!empty($bot->image) && $this->isValidUrl($bot->image)) {
             $logoPath = $this->downloadImage($bot->image, "workspaces/{$uuid}");
         }
 
-        // Собираем settings из разных полей
         $settings = [
             'visual' => [
                 'label' => $bot->title,
@@ -109,14 +94,10 @@ class BotsMigrationSeeder extends Seeder
 
         Log::info("Workspace created: {$workspace->name} (UUID: {$uuid})");
 
-        // Мигрируем категории и товары
         $this->migrateCategories($bot->id, $workspace);
         $this->migrateProducts($bot->id, $workspace);
     }
 
-    /**
-     * Миграция категорий
-     */
     private function migrateCategories(int $botId, Workspace $workspace): void
     {
         $categories = DB::connection('bcash')
@@ -128,7 +109,7 @@ class BotsMigrationSeeder extends Seeder
         foreach ($categories as $cat) {
             $newCategory = Category::create([
                 'workspace_id' => $workspace->id,
-                'parent_id' => null, // Все корневые
+                'parent_id' => null,
                 'name' => $cat->title,
                 'sort_order' => $cat->order_position,
             ]);
@@ -137,9 +118,6 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    /**
-     * Миграция товаров
-     */
     private function migrateProducts(int $botId, Workspace $workspace): void
     {
         $products = DB::connection('bcash')
@@ -148,17 +126,18 @@ class BotsMigrationSeeder extends Seeder
             ->get();
 
         foreach ($products as $oldProduct) {
-            // Скачиваем картинки товара
             $images = json_decode($oldProduct->images ?? '[]', true) ?: [];
             $localImages = [];
             foreach ($images as $imgUrl) {
-                $path = $this->downloadImage($imgUrl, "products/{$oldProduct->id}");
-                if ($path) {
-                    $localImages[] = $path;
+                // ✅ Проверяем валидность URL
+                if ($this->isValidUrl($imgUrl)) {
+                    $path = $this->downloadImage($imgUrl, "products/{$oldProduct->id}");
+                    if ($path) {
+                        $localImages[] = $path;
+                    }
                 }
             }
 
-            // Собираем config
             $config = [
                 'variants' => json_decode($oldProduct->variants ?? '{}', true),
                 'weight_config' => json_decode($oldProduct->weight_config ?? '{}', true),
@@ -181,17 +160,11 @@ class BotsMigrationSeeder extends Seeder
                 'in_stop_list' => !is_null($oldProduct->in_stop_list_at),
             ]);
 
-            // Мигрируем атрибуты (product_options)
             $this->migrateProductAttributes($oldProduct->id, $product->id);
-
-            // Привязываем категории
             $this->attachCategories($oldProduct->id, $product->id, $botId);
         }
     }
 
-    /**
-     * Миграция атрибутов товара
-     */
     private function migrateProductAttributes(int $oldProductId, int $newProductId): void
     {
         $options = DB::connection('bcash')
@@ -208,9 +181,6 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    /**
-     * Привязка товара к категориям
-     */
     private function attachCategories(int $oldProductId, int $newProductId, int $botId): void
     {
         $oldCategoryIds = DB::connection('bcash')
@@ -233,9 +203,6 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    /**
-     * Линковка воркспейсов по company_id
-     */
     private function linkWorkspacesByCompany($companyGroups): void
     {
         $this->command->info('🔗 Связываем воркспейсы по company_id...');
@@ -245,7 +212,6 @@ class BotsMigrationSeeder extends Seeder
                 continue;
             }
 
-            // Получаем UUID всех воркспейсов в группе
             $uuids = [];
             foreach ($groupBots as $bot) {
                 if (isset($this->workspaceMap[$bot->id])) {
@@ -253,7 +219,6 @@ class BotsMigrationSeeder extends Seeder
                 }
             }
 
-            // Линкуем каждый с каждым
             for ($i = 0; $i < count($uuids); $i++) {
                 for ($j = $i + 1; $j < count($uuids); $j++) {
                     $ws1 = Workspace::where('uuid', $uuids[$i])->first();
@@ -267,9 +232,6 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    /**
-     * Вывод ссылок на воркспейсы
-     */
     private function outputWorkspaceLinks(): void
     {
         $this->command->newLine();
@@ -289,8 +251,13 @@ class BotsMigrationSeeder extends Seeder
     }
 
     /**
-     * Скачивание картинки в storage
+     * ✅ НОВАЯ МЕТОД: Проверка валидности URL
      */
+    private function isValidUrl(string $url): bool
+    {
+        return filter_var($url, FILTER_VALIDATE_URL) !== false;
+    }
+
     private function downloadImage(string $url, string $directory): ?string
     {
         try {
@@ -311,7 +278,6 @@ class BotsMigrationSeeder extends Seeder
                 return null;
             }
 
-            // Определяем расширение
             $pathInfo = pathinfo(parse_url($url, PHP_URL_PATH) ?? '');
             $ext = strtolower($pathInfo['extension'] ?? 'jpg');
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
@@ -330,9 +296,6 @@ class BotsMigrationSeeder extends Seeder
         }
     }
 
-    /**
-     * Генерация случайного HEX-цвета
-     */
     private function randomColor(): string
     {
         $colors = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545', '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'];
