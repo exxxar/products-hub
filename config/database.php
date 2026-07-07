@@ -43,6 +43,22 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
+        'bcash' => [
+            'driver' => 'mysql',
+            'host' => env('BCASH_DB_HOST', '127.0.0.1'),
+            'port' => env('BCASH_DB_PORT', '3306'),
+            'database' => env('BCASH_DB_DATABASE', 'likholetov_bcash'),
+            'username' => env('BCASH_DB_USERNAME', 'likholetov_bcash'),
+            'password' => env('BCASH_DB_PASSWORD', 'likholetov_bcash1234'),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DATABASE_URL'),
