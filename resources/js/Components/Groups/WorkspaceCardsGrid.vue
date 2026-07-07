@@ -7,18 +7,33 @@
                 Мои доски
             </h2>
             <p class="aggregator-subtitle">
-                {{ workspaces.length }} {{ pluralize(workspaces.length, 'доска', 'доски', 'досок') }}
+                {{ filteredWorkspaces.length }} из {{ workspaces.length }} {{ pluralize(filteredWorkspaces.length, 'доска', 'доски', 'досок') }}
             </p>
         </div>
 
-        <!-- Поиск -->
-        <div class="aggregator-search">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="Найти доску..."
-            />
+        <!-- Поиск и фильтр -->
+        <div class="aggregator-controls">
+            <div class="aggregator-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Найти доску..."
+                />
+            </div>
+
+            <!-- ✅ Переключатель фильтра -->
+            <label class="filter-switch">
+                <input
+                    type="checkbox"
+                    v-model="onlyWithProducts"
+                />
+                <span class="switch-slider"></span>
+                <span class="switch-label">
+                    <i class="fa-solid fa-box"></i>
+                    Только с товарами
+                </span>
+            </label>
         </div>
 
         <!-- Сетка карточек -->
@@ -83,9 +98,10 @@
         </div>
 
         <!-- Пустое состояние -->
-        <div v-else-if="searchQuery" class="empty-state">
-            <i class="fa-solid fa-magnifying-glass"></i>
+        <div v-else-if="searchQuery || onlyWithProducts" class="empty-state">
+            <i class="fa-solid fa-filter"></i>
             <p>Ничего не найдено</p>
+            <small v-if="onlyWithProducts">Попробуйте отключить фильтр "Только с товарами"</small>
         </div>
         <div v-else class="empty-state">
             <i class="fa-solid fa-layer-group"></i>
@@ -107,17 +123,32 @@ export default {
     emits: ['select'],
     data() {
         return {
-            searchQuery: ''
+            searchQuery: '',
+            onlyWithProducts: false // ✅ Новый фильтр
         }
     },
     computed: {
         filteredWorkspaces() {
-            if (!this.searchQuery) return this.workspaces
-            const q = this.searchQuery.toLowerCase()
-            return this.workspaces.filter(w =>
-                w.name?.toLowerCase().includes(q) ||
-                w.label?.toLowerCase().includes(q)
-            )
+            let result = this.workspaces
+
+            // Поиск по имени/метке
+            if (this.searchQuery) {
+                const q = this.searchQuery.toLowerCase()
+                result = result.filter(w =>
+                    w.name?.toLowerCase().includes(q) ||
+                    w.label?.toLowerCase().includes(q)
+                )
+            }
+
+            // ✅ Фильтр по наличию товаров
+            if (this.onlyWithProducts) {
+                result = result.filter(w => {
+                    const productsCount = w.stats?.products_count || 0
+                    return productsCount > 0
+                })
+            }
+
+            return result
         }
     },
     mounted() {
@@ -209,9 +240,17 @@ export default {
     margin: 0;
 }
 
+/* ✅ Блок управления (поиск + фильтр) */
+.aggregator-controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    align-items: center;
+}
+
 .aggregator-search {
     position: relative;
-    margin-bottom: 24px;
+    flex: 1;
 }
 
 .aggregator-search > i {
@@ -237,6 +276,75 @@ export default {
 .aggregator-search input:focus {
     border-color: #0d6efd;
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+/* ✅ Переключатель фильтра */
+.filter-switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    padding: 10px 16px;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #fff;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.filter-switch:hover {
+    border-color: #0d6efd;
+    background: #f8f9ff;
+}
+
+.filter-switch input {
+    display: none;
+}
+
+.switch-slider {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    background: #dee2e6;
+    border-radius: 22px;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.switch-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-switch input:checked + .switch-slider {
+    background: #0d6efd;
+}
+
+.filter-switch input:checked + .switch-slider::before {
+    transform: translateX(18px);
+}
+
+.switch-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #495057;
+}
+
+.switch-label i {
+    font-size: 12px;
+    color: #0d6efd;
 }
 
 .cards-grid {
@@ -462,6 +570,16 @@ export default {
 
     .stat-item {
         font-size: 10px;
+    }
+
+    /* ✅ Мобильная адаптация для контролов */
+    .aggregator-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-switch {
+        justify-content: center;
     }
 }
 </style>
