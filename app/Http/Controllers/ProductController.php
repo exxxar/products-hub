@@ -527,7 +527,7 @@ class ProductController extends Controller
     /**
      * Загрузка картинок товара
      */
-    public function uploadImages(Request $request, Product $product)
+    public function uploadImages(Request $request, $worksapceUuid, Product $product)
     {
         $workspace = App::make('workspace');
 
@@ -564,7 +564,7 @@ class ProductController extends Controller
     /**
      * Удаление картинки товара
      */
-    public function deleteImage(Request $request, Product $product)
+    public function deleteImage(Request $request, $worksapceUuid, Product $product)
     {
         $workspace = App::make('workspace');
 
@@ -602,7 +602,7 @@ class ProductController extends Controller
     /**
      * Сортировка картинок
      */
-    public function reorderImages(Request $request, Product $product)
+    public function reorderImages(Request $request, $worksapceUuid, Product $product)
     {
         $workspace = App::make('workspace');
 
