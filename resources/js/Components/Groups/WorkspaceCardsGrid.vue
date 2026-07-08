@@ -138,15 +138,15 @@
             </div>
         </div>
 
-        <!-- ✅ Режим редактирования порядка (drag-and-drop) -->
-        <div v-else-if="isOrdering" class="cards-grid ordering-mode">
+        <!-- Режим редактирования порядка (drag-and-drop) -->
+        <div v-else-if="isOrdering" class="ordering-mode">
             <draggable
                 v-model="orderingList"
                 item-key="uuid"
                 handle=".drag-handle"
                 ghost-class="ghost-card"
                 :animation="200"
-                class="draggable-grid"
+                class="ordering-grid"
             >
                 <template #item="{ element: workspace, index }">
                     <div class="workspace-card ordering-card">
@@ -813,29 +813,32 @@ export default {
 }
 
 /* ✅ Режим редактирования порядка */
-.ordering-mode .workspace-card {
-    cursor: default;
+.ordering-mode {
+    margin-bottom: 24px;
 }
 
-.ordering-mode .workspace-card:hover {
-    transform: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.draggable-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+.ordering-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+    gap: 16px !important;
 }
 
 .ordering-card {
     position: relative;
     align-items: center;
+    padding: 14px;
+    gap: 10px;
+}
+
+.ordering-card:hover {
+    transform: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    border-color: #0d6efd !important;
 }
 
 .drag-handle {
-    width: 28px;
-    height: 40px;
+    width: 24px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -860,12 +863,12 @@ export default {
 }
 
 .ordering-number {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     background: #e7f1ff;
     color: #0d6efd;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -881,8 +884,8 @@ export default {
 }
 
 .arrow-btn {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border: 1px solid #dee2e6;
     border-radius: 6px;
     background: #fff;
@@ -911,52 +914,41 @@ export default {
     opacity: 0.4;
     background: #e7f1ff !important;
     border-color: #0d6efd !important;
+    border-style: dashed !important;
 }
 
-/* ✅ Мобильная адаптация */
+/* ✅ Мобильная адаптация для режима редактирования */
 @media (max-width: 768px) {
-    .cards-grid,
-    .draggable-grid {
-        grid-template-columns: 1fr;
+    .ordering-grid {
+        grid-template-columns: 1fr !important;
     }
 
-    .aggregator-title {
-        font-size: 20px;
-    }
-
-    .card-actions {
-        opacity: 1;
-    }
-
-    .card-stats {
+    .ordering-card {
+        padding: 12px;
         gap: 8px;
     }
 
-    .stat-item {
+    .drag-handle {
+        width: 20px;
+        height: 32px;
+    }
+
+    .ordering-number {
+        width: 24px;
+        height: 24px;
         font-size: 10px;
     }
 
-    .aggregator-controls {
-        flex-direction: column;
-        align-items: stretch;
+    .arrow-btn {
+        width: 24px;
+        height: 24px;
     }
+}
 
-    .filter-switch {
-        justify-content: center;
-    }
-
-    .aggregator-header-top {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .ordering-controls {
-        flex-direction: column;
-    }
-
-    .btn-order-save,
-    .btn-order-cancel {
-        justify-content: center;
+/* ✅ Планшеты — 2-3 колонки */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .ordering-grid {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
     }
 }
 </style>
