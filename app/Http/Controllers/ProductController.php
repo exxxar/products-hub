@@ -514,7 +514,7 @@ class ProductController extends Controller
 
         $count = $workspace->products()
             ->whereIn('id', $ids)
-            ->update(['in_stop_list' => false]);
+            ->update(['in_stop_list' => false,'is_active'=>true]);
 
         ActivityLogger::bulk('removed_from_stop_list', 'product', $ids);
 
