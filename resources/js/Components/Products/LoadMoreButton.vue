@@ -114,6 +114,111 @@ export default {
 </script>
 
 <style scoped>
+
+.load-more-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 16px;
+    margin: 16px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px dashed #dee2e6;
+}
+
+.load-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    border: 1px solid #0d6efd;
+    border-radius: 10px;
+    background: #fff;
+    color: #0d6efd;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+    background: #0d6efd;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+.load-more-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.load-more-btn i {
+    font-size: 13px;
+}
+
+/* === Прогресс === */
+.load-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0d6efd 0%, #6f42c1 100%);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* === Все загружены === */
+.all-loaded {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    margin: 16px;
+    color: #198754;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.all-loaded i {
+    font-size: 14px;
+}
+
+/* === Responsive === */
+@media (max-width: 576px) {
+    .load-more-wrapper {
+        margin: 12px;
+        padding: 20px 12px;
+    }
+
+    .load-more-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
 .load-more-wrapper {
     display: flex;
     flex-direction: column;
