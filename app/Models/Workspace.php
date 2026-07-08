@@ -270,6 +270,9 @@ class Workspace extends Model
         ];
     }
 
+    /**
+     * Получить связанные workspace с учётом порядка
+     */
     public function getLinkedWorkspaces()
     {
         $linkedUuids = $this->getSetting('linked_workspaces', []);
@@ -278,25 +281,66 @@ class Workspace extends Model
             return collect();
         }
 
-        return Workspace::whereIn('uuid', $linkedUuids)
+        $workspaces = Workspace::whereIn('uuid', $linkedUuids)
             ->where('id', '!=', $this->id)
-            ->withCount(['products', 'categories', 'collections']) // ✅ Добавили счётчики
-            ->orderBy('name')
+            ->withCount(['products', 'categories', 'collections'])
             ->get()
-            ->map(fn($w) => [
-                'id' => $w->id,
-                'uuid' => $w->uuid,
-                'name' => $w->name,
-                'label' => $w->label,
-                'color' => $w->color,
-                'logo_url' => $w->logo_url,
-                'initials' => $w->initials,
-                'stats' => [ // ✅ Добавили статистику
-                    'products_count' => $w->products_count,
-                    'categories_count' => $w->categories_count,
-                    'collections_count' => $w->collections_count,
-                ],
-            ]);
+            ->keyBy('uuid');
+
+        // ✅ Получаем сохранённый порядок (если есть)
+        $orderedUuids = $this->getSetting('linked_workspaces_order', []);
+
+        // Если порядок сохранён — сортируем по нему
+        if (!empty($orderedUuids)) {
+            $sorted = collect();
+            foreach ($orderedUuids as $uuid) {
+                if (isset($workspaces[$uuid])) {
+                    $sorted->push($workspaces[$uuid]);
+                }
+            }
+            // Добавляем те, что есть в linked, но нет в order (в конец)
+            foreach ($workspaces as $uuid => $w) {
+                if (!in_array($uuid, $orderedUuids)) {
+                    $sorted->push($w);
+                }
+            }
+            $workspaces = $sorted;
+        }
+
+        return $workspaces->map(fn($w) => [
+            'id' => $w->id,
+            'uuid' => $w->uuid,
+            'name' => $w->name,
+            'label' => $w->label,
+            'color' => $w->color,
+            'logo_url' => $w->logo_url,
+            'initials' => $w->initials,
+            'stats' => [
+                'products_count' => $w->products_count,
+                'categories_count' => $w->categories_count,
+                'collections_count' => $w->collections_count,
+            ],
+        ])->values();
+    }
+
+    /**
+     * ✅ Установить порядок связанных workspace
+     */
+    public function setWorkspacesOrder(array $uuids): void
+    {
+        // Проверяем, что все UUID действительно связаны
+        $linkedUuids = $this->getSetting('linked_workspaces', []);
+        $validUuids = array_values(array_filter($uuids, fn($uuid) => in_array($uuid, $linkedUuids)));
+
+        $this->setSetting('linked_workspaces_order', $validUuids);
+    }
+
+    /**
+     * Получить текущий порядок
+     */
+    public function getWorkspacesOrder(): array
+    {
+        return $this->getSetting('linked_workspaces_order', []);
     }
 
     /**

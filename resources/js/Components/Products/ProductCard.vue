@@ -43,13 +43,26 @@
 
         <!-- Изображение -->
         <div class="card-image">
-            <img
-                v-if="product.images && product.images.length > 0"
-                v-lazy="product.images[0].url"
-                :alt="product.name"
-            />
+            <img v-if="product.images?.length"
+                 v-lazy="product.images[0].url" :alt="product.name" />
             <div v-else class="image-placeholder">
                 <i class="fa-solid fa-image"></i>
+            </div>
+
+            <!-- ✅ Счётчик картинок + кнопка редактирования -->
+            <div class="image-actions">
+                <div v-if="product.images?.length" class="images-count">
+                    <i class="fa-solid fa-images"></i>
+                    <span>{{ product.images.length }}</span>
+                </div>
+                <button
+                    type="button"
+                    class="btn-edit-images"
+                    @click.stop="openImagesModal"
+                    title="Редактировать изображения"
+                >
+                    <i class="fa-solid fa-pen"></i>
+                </button>
             </div>
         </div>
 
@@ -125,7 +138,7 @@ export default {
         }
     },
 
-    emits: ['toggle-select', 'edit-product', 'toggle-stop-list'],
+    emits: ['toggle-select', 'edit-product', 'toggle-stop-list','edit-images'],
 
     computed: {
         discountPercent() {
@@ -140,6 +153,9 @@ export default {
             return new Intl.NumberFormat('ru-RU').format(price) + ' ₽'
         },
 
+        openImagesModal() {
+            this.$emit('edit-images', this.product)
+        },
         handleCardClick() {
             this.$emit('toggle-select', this.product.id)
         },
@@ -170,12 +186,11 @@ export default {
     transform: translateY(-2px);
 }
 
-/* ✅ ЯВНОЕ ВЫДЕЛЕНИЕ */
 .product-card.is-selected {
     border-color: #0d6efd;
-    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.2), 0 4px 12px rgba(13, 110, 253, 0.15);
-    background: linear-gradient(to bottom, #f8f9ff 0%, #fff 100%);
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.2);
 }
+
 
 .product-card.is-selected:hover {
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.3), 0 6px 16px rgba(13, 110, 253, 0.2);
@@ -278,7 +293,7 @@ export default {
     color: #fff;
 }
 
-/* === Изображение === */
+/* === ✅ Изображение с действиями === */
 .card-image {
     position: relative;
     width: 100%;
@@ -292,6 +307,75 @@ export default {
     height: 100%;
     object-fit: cover;
     transition: transform 0.3s ease;
+}
+
+.product-card:hover .card-image img {
+    transform: scale(1.05);
+}
+
+.image-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e9ecef;
+    color: #adb5bd;
+    font-size: 40px;
+}
+
+/* Контейнер для действий на картинке */
+.image-actions {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.product-card:hover .image-actions {
+    opacity: 1;
+}
+
+.images-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+
+.images-count i {
+    font-size: 10px;
+}
+
+.btn-edit-images {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #0d6efd;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-edit-images:hover {
+    background: #0d6efd;
+    color: #fff;
+    transform: scale(1.1);
 }
 
 .product-card:hover .card-image img {

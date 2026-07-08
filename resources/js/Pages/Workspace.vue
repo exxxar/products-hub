@@ -63,6 +63,7 @@
                             @edit-product="openEditProduct"
                             @toggle-select="toggleSelect"
                             @toggle-stop-list="handleToggleStopList"
+                            @edit-images="openImagesModal"
                         />
                     </template>
 
@@ -242,7 +243,8 @@
             @install="handleInstall"
         />
 
-
+        <ProductImagesModal   v-model="showImagesModal"
+                              :product="productForImages" />
     </div>
 </template>
 
@@ -274,11 +276,13 @@ import WorkspaceFooter from '@/Components/Layout/WorkspaceFooter.vue'
 
 import WorkspaceCardsGrid from '@/Components/Groups/WorkspaceCardsGrid.vue'
 import LoadMoreButton from '@/Components/Products/LoadMoreButton.vue'
+import ProductImagesModal from '@/Components/Products/ProductImagesModal.vue'
 
 export default {
     name: 'Workspace',
 
     components: {
+        ProductImagesModal,
         LoadMoreButton,
         WorkspaceCardsGrid,
         PwaInstallModal,
@@ -326,7 +330,9 @@ export default {
             store: useWorkspaceStore(),
             selectedCollection: null,
             selectedCategory: null,
-            webhook: null
+            webhook: null,
+            showImagesModal: false,
+            productForImages: null,
         }
     },
     watch: {
@@ -429,6 +435,10 @@ export default {
         this.store.stopPresenceTracking()
     },
     methods: {
+        openImagesModal(product) {
+            this.productForImages = product
+            this.showImagesModal = true
+        },
         goToWorkspace(workspace) {
             if (workspace.is_current) return
             this.store.switchWorkspace(workspace.uuid)

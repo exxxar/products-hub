@@ -56,6 +56,22 @@ class WorkspaceLinkController extends Controller
         ]);
     }
 
+    public function saveOrder(Request $request)
+    {
+        $workspace = App::make('workspace');
+
+        $validated = $request->validate([
+            'uuids' => 'required|array',
+            'uuids.*' => 'string|uuid',
+        ]);
+
+        $workspace->setWorkspacesOrder($validated['uuids']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Порядок сохранён',
+        ]);
+    }
 
     /**
      * Получить все связанные доски

@@ -21,6 +21,7 @@
     "dependencies": {
         "bootstrap": "^5.3.8",
         "pinia": "^3.0.4",
-        "vue3-lazyload": "^0.4.2"
+        "vue3-lazyload": "^0.4.2",
+        "vuedraggable": "^4.1.0"
     }
 }

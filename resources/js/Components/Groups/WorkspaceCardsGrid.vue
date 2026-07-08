@@ -2,13 +2,49 @@
     <div class="workspace-cards-container">
         <!-- Заголовок -->
         <div class="aggregator-header">
-            <h2 class="aggregator-title">
-                <i class="fa-solid fa-layer-group"></i>
-                Мои доски
-            </h2>
-            <p class="aggregator-subtitle">
-                {{ filteredWorkspaces.length }} из {{ workspaces.length }} {{ pluralize(filteredWorkspaces.length, 'доска', 'доски', 'досок') }}
-            </p>
+            <div class="aggregator-header-top">
+                <div>
+                    <h2 class="aggregator-title">
+                        <i class="fa-solid fa-layer-group"></i>
+                        Мои доски
+                    </h2>
+                    <p class="aggregator-subtitle">
+                        {{ filteredWorkspaces.length }} из {{ workspaces.length }} {{ pluralize(filteredWorkspaces.length, 'доска', 'доски', 'досок') }}
+                    </p>
+                </div>
+
+                <!-- ✅ Кнопка редактирования порядка -->
+                <button
+                    v-if="!isOrdering"
+                    type="button"
+                    class="btn-order-mode"
+                    @click="startOrdering"
+                    title="Изменить порядок"
+                >
+                    <i class="fa-solid fa-arrows-up-down"></i>
+                    <span>Упорядочить</span>
+                </button>
+                <div v-else class="ordering-controls">
+                    <button
+                        type="button"
+                        class="btn-order-save"
+                        @click="saveOrder"
+                        :disabled="isSaving"
+                    >
+                        <i v-if="isSaving" class="fa-solid fa-spinner fa-spin"></i>
+                        <i v-else class="fa-solid fa-check"></i>
+                        <span>{{ isSaving ? 'Сохранение...' : 'Сохранить' }}</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-order-cancel"
+                        @click="cancelOrdering"
+                    >
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Отмена</span>
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- Поиск и фильтр -->
@@ -19,14 +55,15 @@
                     v-model="searchQuery"
                     type="text"
                     placeholder="Найти доску..."
+                    :disabled="isOrdering"
                 />
             </div>
 
-            <!-- ✅ Переключатель фильтра -->
-            <label class="filter-switch">
+            <label class="filter-switch" :class="{ disabled: isOrdering }">
                 <input
                     type="checkbox"
                     v-model="onlyWithProducts"
+                    :disabled="isOrdering"
                 />
                 <span class="switch-slider"></span>
                 <span class="switch-label">
@@ -36,8 +73,14 @@
             </label>
         </div>
 
-        <!-- Сетка карточек -->
-        <div v-if="filteredWorkspaces.length > 0" class="cards-grid">
+        <!-- Подсказка в режиме редактирования -->
+        <div v-if="isOrdering" class="ordering-hint">
+            <i class="fa-solid fa-info-circle"></i>
+            Перетаскивайте карточки, чтобы изменить порядок. Порядок сохраняется для текущей доски.
+        </div>
+
+        <!-- ✅ Сетка карточек (обычный режим) -->
+        <div v-if="!isOrdering && filteredWorkspaces.length > 0" class="cards-grid">
             <div
                 v-for="workspace in filteredWorkspaces"
                 :key="workspace.uuid"
@@ -54,7 +97,6 @@
                     <div class="card-name">{{ workspace.name }}</div>
                     <div v-if="workspace.label" class="card-label">{{ workspace.label }}</div>
 
-                    <!-- ✅ Блок со статистикой -->
                     <div class="card-stats">
                         <div class="stat-item" :title="`${workspace.stats?.products_count || 0} товаров`">
                             <i class="fa-solid fa-box"></i>
@@ -80,7 +122,6 @@
                     </div>
                 </div>
 
-                <!-- ✅ Кнопки действий -->
                 <div class="card-actions">
                     <button
                         type="button"
@@ -95,6 +136,59 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- ✅ Режим редактирования порядка (drag-and-drop) -->
+        <div v-else-if="isOrdering" class="cards-grid ordering-mode">
+            <draggable
+                v-model="orderingList"
+                item-key="uuid"
+                handle=".drag-handle"
+                ghost-class="ghost-card"
+                :animation="200"
+                class="draggable-grid"
+            >
+                <template #item="{ element: workspace, index }">
+                    <div class="workspace-card ordering-card">
+                        <div class="drag-handle" title="Перетащите">
+                            <i class="fa-solid fa-grip-vertical"></i>
+                        </div>
+
+                        <div class="ordering-number">{{ index + 1 }}</div>
+
+                        <div class="card-icon" :style="{ background: workspace.color || '#0d6efd' }">
+                            <img v-if="workspace.logo_url" :src="workspace.logo_url" alt="" />
+                            <span v-else>{{ getInitials(workspace) }}</span>
+                        </div>
+
+                        <div class="card-body">
+                            <div class="card-name">{{ workspace.name }}</div>
+                            <div v-if="workspace.label" class="card-label">{{ workspace.label }}</div>
+                        </div>
+
+                        <div class="ordering-arrows">
+                            <button
+                                type="button"
+                                class="arrow-btn"
+                                :disabled="index === 0"
+                                @click="moveUp(index)"
+                                title="Вверх"
+                            >
+                                <i class="fa-solid fa-chevron-up"></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="arrow-btn"
+                                :disabled="index === orderingList.length - 1"
+                                @click="moveDown(index)"
+                                title="Вниз"
+                            >
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </draggable>
         </div>
 
         <!-- Пустое состояние -->
@@ -112,8 +206,11 @@
 </template>
 
 <script>
+import draggable from 'vuedraggable'
+
 export default {
     name: 'WorkspaceCardsGrid',
+    components: { draggable },
     props: {
         workspaces: {
             type: Array,
@@ -124,14 +221,17 @@ export default {
     data() {
         return {
             searchQuery: '',
-            onlyWithProducts: false // ✅ Новый фильтр
+            onlyWithProducts: false,
+            isOrdering: false,
+            isSaving: false,
+            orderingList: [], // Копия списка для редактирования
+            originalOrder: [] // Для отмены
         }
     },
     computed: {
         filteredWorkspaces() {
-            let result = this.workspaces
+            let result = [...this.workspaces]
 
-            // Поиск по имени/метке
             if (this.searchQuery) {
                 const q = this.searchQuery.toLowerCase()
                 result = result.filter(w =>
@@ -140,7 +240,6 @@ export default {
                 )
             }
 
-            // ✅ Фильтр по наличию товаров
             if (this.onlyWithProducts) {
                 result = result.filter(w => {
                     const productsCount = w.stats?.products_count || 0
@@ -152,7 +251,6 @@ export default {
         }
     },
     mounted() {
-        // ✅ Если статистики нет в данных — подгружаем
         this.loadStatsIfNeeded()
     },
     methods: {
@@ -176,15 +274,12 @@ export default {
             return num.toString()
         },
         openInNewTab(workspace) {
-            // ✅ Открываем доску в новой вкладке
             window.open(`/workspace/${workspace.uuid}`, '_blank')
         },
         async loadStatsIfNeeded() {
-            // Проверяем, есть ли статистика хотя бы у одного workspace
             const hasStats = this.workspaces.some(w => w.stats)
             if (hasStats) return
 
-            // Загружаем статистику для всех workspace'ов
             try {
                 const uuids = this.workspaces
                     .filter(w => !w.is_current)
@@ -194,7 +289,6 @@ export default {
 
                 const response = await axios.post('/api/workspaces/stats', { uuids })
 
-                // Мерджим статистику в workspaces
                 if (response.data?.stats) {
                     this.workspaces.forEach(w => {
                         if (response.data.stats[w.uuid]) {
@@ -205,6 +299,63 @@ export default {
             } catch (error) {
                 console.error('Failed to load workspace stats:', error)
             }
+        },
+
+        // === Управление порядком ===
+        startOrdering() {
+            // Сохраняем текущий порядок для возможной отмены
+            this.originalOrder = this.workspaces.map(w => w.uuid)
+            // Копируем список для редактирования (исключая текущий)
+            this.orderingList = this.workspaces.filter(w => !w.is_current)
+            this.isOrdering = true
+        },
+        cancelOrdering() {
+            this.isOrdering = false
+            this.orderingList = []
+            this.originalOrder = []
+        },
+        async saveOrder() {
+            this.isSaving = true
+            try {
+                const uuids = this.orderingList.map(w => w.uuid)
+                await axios.post('/api/workspaces/linked/order', { uuids })
+
+                // Обновляем порядок в основном списке
+                const currentWs = this.workspaces.find(w => w.is_current)
+                const others = this.orderingList
+                const newOrder = currentWs ? [currentWs, ...others] : others
+
+                // Очищаем старый массив и заполняем новым
+                this.workspaces.splice(0, this.workspaces.length, ...newOrder)
+
+                this.isOrdering = false
+                this.orderingList = []
+                this.originalOrder = []
+
+                this.$notify?.success({
+                    title: 'Порядок сохранён',
+                    message: 'Новый порядок досок успешно применён'
+                })
+            } catch (error) {
+                console.error('Save order failed:', error)
+                this.$notify?.error('Ошибка при сохранении порядка')
+            } finally {
+                this.isSaving = false
+            }
+        },
+        moveUp(index) {
+            if (index === 0) return
+            const list = [...this.orderingList]
+            const item = list.splice(index, 1)[0]
+            list.splice(index - 1, 0, item)
+            this.orderingList = list
+        },
+        moveDown(index) {
+            if (index === this.orderingList.length - 1) return
+            const list = [...this.orderingList]
+            const item = list.splice(index, 1)[0]
+            list.splice(index + 1, 0, item)
+            this.orderingList = list
         }
     }
 }
@@ -218,6 +369,14 @@ export default {
 
 .aggregator-header {
     margin-bottom: 24px;
+}
+
+.aggregator-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 4px;
 }
 
 .aggregator-title {
@@ -240,7 +399,104 @@ export default {
     margin: 0;
 }
 
-/* ✅ Блок управления (поиск + фильтр) */
+/* ✅ Кнопка режима упорядочивания */
+.btn-order-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #fff;
+    color: #495057;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn-order-mode:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f8f9ff;
+}
+
+.btn-order-mode i {
+    font-size: 12px;
+}
+
+/* ✅ Контроли режима редактирования */
+.ordering-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-order-save {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 10px;
+    background: #0d6efd;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-order-save:hover:not(:disabled) {
+    background: #0b5ed7;
+}
+
+.btn-order-save:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-order-cancel {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #fff;
+    color: #495057;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-order-cancel:hover {
+    border-color: #dc3545;
+    color: #dc3545;
+    background: #fff5f5;
+}
+
+/* ✅ Подсказка */
+.ordering-hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+    border-radius: 10px;
+    color: #664d03;
+    font-size: 13px;
+}
+
+.ordering-hint i {
+    font-size: 14px;
+    color: #ff9800;
+}
+
+/* ✅ Контролы (поиск + фильтр) */
 .aggregator-controls {
     display: flex;
     gap: 12px;
@@ -278,7 +534,11 @@ export default {
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
 }
 
-/* ✅ Переключатель фильтра */
+.aggregator-search input:disabled {
+    background: #f8f9fa;
+    cursor: not-allowed;
+}
+
 .filter-switch {
     display: flex;
     align-items: center;
@@ -293,9 +553,14 @@ export default {
     white-space: nowrap;
 }
 
-.filter-switch:hover {
+.filter-switch:hover:not(.disabled) {
     border-color: #0d6efd;
     background: #f8f9ff;
+}
+
+.filter-switch.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .filter-switch input {
@@ -418,7 +683,6 @@ export default {
     margin-bottom: 8px;
 }
 
-/* ✅ Статистика */
 .card-stats {
     display: flex;
     gap: 10px;
@@ -468,7 +732,6 @@ export default {
     color: #084298;
 }
 
-/* ✅ Блок действий */
 .card-actions {
     display: flex;
     flex-direction: column;
@@ -549,9 +812,111 @@ export default {
     font-size: 13px;
 }
 
+/* ✅ Режим редактирования порядка */
+.ordering-mode .workspace-card {
+    cursor: default;
+}
+
+.ordering-mode .workspace-card:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.draggable-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.ordering-card {
+    position: relative;
+    align-items: center;
+}
+
+.drag-handle {
+    width: 28px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    color: #adb5bd;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.drag-handle:hover {
+    background: #f8f9fa;
+    color: #0d6efd;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.drag-handle i {
+    font-size: 14px;
+}
+
+.ordering-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #e7f1ff;
+    color: #0d6efd;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ordering-arrows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.arrow-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: all 0.15s ease;
+}
+
+.arrow-btn:hover:not(:disabled) {
+    background: #e7f1ff;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.arrow-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ✅ Анимация drag */
+.ghost-card {
+    opacity: 0.4;
+    background: #e7f1ff !important;
+    border-color: #0d6efd !important;
+}
+
 /* ✅ Мобильная адаптация */
 @media (max-width: 768px) {
-    .cards-grid {
+    .cards-grid,
+    .draggable-grid {
         grid-template-columns: 1fr;
     }
 
@@ -559,7 +924,6 @@ export default {
         font-size: 20px;
     }
 
-    /* На мобильном кнопки всегда видны */
     .card-actions {
         opacity: 1;
     }
@@ -572,13 +936,26 @@ export default {
         font-size: 10px;
     }
 
-    /* ✅ Мобильная адаптация для контролов */
     .aggregator-controls {
         flex-direction: column;
         align-items: stretch;
     }
 
     .filter-switch {
+        justify-content: center;
+    }
+
+    .aggregator-header-top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ordering-controls {
+        flex-direction: column;
+    }
+
+    .btn-order-save,
+    .btn-order-cancel {
         justify-content: center;
     }
 }

@@ -523,4 +523,113 @@ class ProductController extends Controller
             'count' => $count,
         ]);
     }
+
+    /**
+     * Загрузка картинок товара
+     */
+    public function uploadImages(Request $request, Product $product)
+    {
+        $workspace = App::make('workspace');
+
+        if ($product->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'images' => 'required|array|max:10',
+            'images.*' => 'image|mimes:jpeg,png,jpg,webp,gif|max:5120', // 5MB
+        ]);
+
+        $images = $product->images ?? [];
+
+        foreach ($request->file('images') as $file) {
+            $path = $file->store("products/{$product->id}", 'public');
+
+            $images[] = [
+                'url' => Storage::url($path),
+                'path' => $path,
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+            ];
+        }
+
+        $product->update(['images' => $images]);
+
+        return response()->json([
+            'success' => true,
+            'images' => $product->images,
+        ]);
+    }
+
+    /**
+     * Удаление картинки товара
+     */
+    public function deleteImage(Request $request, Product $product)
+    {
+        $workspace = App::make('workspace');
+
+        if ($product->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'index' => 'required|integer',
+        ]);
+
+        $images = $product->images ?? [];
+        $index = $request->input('index');
+
+        if (!isset($images[$index])) {
+            return response()->json(['error' => 'Image not found'], 404);
+        }
+
+        // Удаляем файл
+        $image = $images[$index];
+        if (!empty($image['path'])) {
+            Storage::disk('public')->delete($image['path']);
+        }
+
+        // Удаляем из массива
+        array_splice($images, $index, 1);
+        $product->update(['images' => $images]);
+
+        return response()->json([
+            'success' => true,
+            'images' => $product->images,
+        ]);
+    }
+
+    /**
+     * Сортировка картинок
+     */
+    public function reorderImages(Request $request, Product $product)
+    {
+        $workspace = App::make('workspace');
+
+        if ($product->workspace_id !== $workspace->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'order' => 'required|array',
+            'order.*' => 'integer',
+        ]);
+
+        $currentImages = $product->images ?? [];
+        $newOrder = $request->input('order');
+
+        $reordered = [];
+        foreach ($newOrder as $index) {
+            if (isset($currentImages[$index])) {
+                $reordered[] = $currentImages[$index];
+            }
+        }
+
+        $product->update(['images' => $reordered]);
+
+        return response()->json([
+            'success' => true,
+            'images' => $product->images,
+        ]);
+    }
 }

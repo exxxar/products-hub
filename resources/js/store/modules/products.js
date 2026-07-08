@@ -371,5 +371,71 @@ export default {
                 throw error
             }
         },
+
+        async uploadProductImages(productId, files) {
+            const formData = new FormData()
+
+            files.forEach((file, index) => {
+                formData.append(`images[${index}]`, file)
+            })
+
+            try {
+                const response = await axios.post(
+                    `/api/workspaces/${this.uuid}/products/${productId}/images`,
+                    formData,
+                    { headers: { 'Content-Type': 'multipart/form-data' } }
+                )
+
+                // Обновляем товар в списке
+                const product = this.products.find(p => p.id === productId)
+                if (product) {
+                    product.images = response.data.images
+                }
+
+                return response.data
+            } catch (error) {
+                console.error('Upload images failed:', error)
+                throw error
+            }
+        },
+
+        async deleteProductImage(productId, index) {
+            try {
+                const response = await axios.delete(
+                    `/api/workspaces/${this.uuid}/products/${productId}/images`,
+                    { data: { index } }
+                )
+
+                // Обновляем товар в списке
+                const product = this.products.find(p => p.id === productId)
+                if (product) {
+                    product.images = response.data.images
+                }
+
+                return response.data
+            } catch (error) {
+                console.error('Delete image failed:', error)
+                throw error
+            }
+        },
+
+        async reorderProductImages(productId, order) {
+            try {
+                const response = await axios.put(
+                    `/api/workspaces/${this.uuid}/products/${productId}/images/reorder`,
+                    { order }
+                )
+
+                const product = this.products.find(p => p.id === productId)
+                if (product) {
+                    product.images = response.data.images
+                }
+
+                return response.data
+            } catch (error) {
+                console.error('Reorder images failed:', error)
+                throw error
+            }
+        },
     },
 }

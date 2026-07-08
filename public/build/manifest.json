@@ -1,6 +1,6 @@
 {
   "resources/js/Pages/Workspace.vue": {
-    "file": "assets/Workspace-6HccVJSE.js",
+    "file": "assets/Workspace-1oLz5cCc.js",
     "name": "Workspace",
     "src": "resources/js/Pages/Workspace.vue",
     "isDynamicEntry": true,
@@ -8,11 +8,11 @@
       "resources/js/app.js"
     ],
     "css": [
-      "assets/Workspace-DDq7ah-R.css"
+      "assets/Workspace-DR-5U6qg.css"
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-cLSMyuAT.js",
+    "file": "assets/app-Co1J2Ldk.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,

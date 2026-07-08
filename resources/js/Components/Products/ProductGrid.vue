@@ -27,6 +27,7 @@
                         :is-selected="isSelected(product.id)"
                         @toggle-select="$emit('toggle-select', $event)"
                         @edit-product="$emit('edit-product', $event)"
+                        @edit-images="$emit('edit-images', $event)"
                         @toggle-stop-list="handleToggleStopList"
                     />
                 </div>
@@ -85,7 +86,7 @@ export default {
             default: true
         }
     },
-    emits: ['toggle-select', 'edit-product'],
+    emits: ['toggle-select', 'edit-product','edit-images'],
     data() {
         return {
             store: useWorkspaceStore()

@@ -44,9 +44,11 @@ Route::prefix('workspaces/{uuid}')
 
         Route::put('/', [WorkspaceController::class, 'update'])->middleware('master.unlocked');
 
+
         Route::prefix('workspace')
             ->group(function () {
                 Route::get('/linked', [WorkspaceLinkController::class, 'index']);
+                Route::post('/linked/order', [WorkspaceLinkController::class, 'saveOrder']);
                 Route::post('/link', [WorkspaceLinkController::class, 'link'])->middleware('master.unlocked');
                 Route::post('/unlink', [WorkspaceLinkController::class, 'unlink'])->middleware('master.unlocked');
                 Route::post('/create-and-link', [WorkspaceLinkController::class, 'createAndLink'])->middleware('master.unlocked');
@@ -118,10 +120,17 @@ Route::prefix('workspaces/{uuid}')
             Route::get('/', [ProductController::class, 'index']);
             Route::post('/', [ProductController::class, 'store'])->middleware('master.unlocked');
 
+
             // В api.php добавить:
             Route::post('/add-to-stop-list', [ProductController::class, 'addToStopList'])->middleware('master.unlocked');
             Route::post('/remove-from-stop-list', [ProductController::class, 'removeFromStopList'])->middleware('master.unlocked');
             Route::delete('/bulk', [ProductController::class, 'destroyMultiple'])->middleware('master.unlocked');
+            Route::post('/{product}/images', [ProductController::class, 'uploadImages'])
+                ->middleware('master.unlocked');
+            Route::delete('/{product}/images', [ProductController::class, 'deleteImage'])
+                ->middleware('master.unlocked');
+            Route::put('/{product}/images/reorder', [ProductController::class, 'reorderImages'])
+                ->middleware('master.unlocked');
             Route::get('/{product}', [ProductController::class, 'show']);
             Route::put('/{product}', [ProductController::class, 'update'])->middleware('master.unlocked');
             Route::delete('/{product}', [ProductController::class, 'destroy'])->middleware('master.unlocked');
