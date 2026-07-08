@@ -14,7 +14,7 @@
                     <div class="form-group">
                         <label class="form-label">Название</label>
                         <div class="name-input-wrapper">
-                            <EmojiPicker v-model="emoji" />
+                            <EmojiPicker v-model="emoji"/>
                             <input
                                 v-model="form.name"
                                 type="text"
@@ -71,13 +71,17 @@
 </template>
 
 <script>
-import { Modal } from 'bootstrap'
-import { useWorkspaceStore } from '@/store/workspace.js'
+import {Modal} from 'bootstrap'
+import {useWorkspaceStore} from '@/store/workspace.js'
 import EmojiPicker from '@/Components/Layout/EmojiPicker.vue'
 
 export default {
     name: 'CategoryModal',
-    components:{EmojiPicker},
+
+    components: {
+        EmojiPicker
+    },
+
     props: {
         category: {
             type: Object,
@@ -91,6 +95,7 @@ export default {
         return {
             store: useWorkspaceStore(),
             modal: null,
+            emoji: '',
             form: {
                 name: '',
                 description: '',
@@ -105,29 +110,48 @@ export default {
         },
 
         availableParents() {
-            // Исключаем текущую категорию из списка родителей
             return this.store.categories.filter(c => c.id !== this.category?.id)
+        },
+
+        // ✅ Полное название с эмодзи
+        fullName() {
+            const name = this.form.name.trim()
+            if (!name) return ''
+            return this.emoji ? `${this.emoji} ${name}` : name
         }
     },
 
     methods: {
         show() {
-            if (this.category) {
-                this.form = {
-                    name: this.category.name || '',
-                    description: this.category.description || '',
-                    parent_id: this.category.parent_id || null
-                }
-            } else {
-                this.form = {
-                    name: '',
-                    description: '',
-                    parent_id: null
-                }
-            }
 
             this.$nextTick(() => {
                 if (this.modal) {
+
+                    if (this.category) {
+                        // ✅ Извлекаем эмодзи из начала названия
+                        const name = this.category.name || ''
+                        const emojiMatch = name.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u)
+
+                        if (emojiMatch) {
+                            this.emoji = emojiMatch[1]
+                            this.form.name = name.replace(emojiMatch[0], '').trim()
+                        } else {
+                            this.emoji = ''
+                            this.form.name = name
+                        }
+
+                        this.form.description = this.category.description || ''
+                        this.form.parent_id = this.category.parent_id || null
+                    } else {
+                        this.emoji = ''
+                        this.form = {
+                            name: '',
+                            description: '',
+                            parent_id: null
+                        }
+                    }
+
+
                     this.modal.show()
                 }
             })
@@ -143,7 +167,13 @@ export default {
             if (!this.form.name.trim()) return
 
             try {
-                await this.$emit('save', { ...this.form }, this.category?.id)
+                // ✅ Отправляем полное название с эмодзи
+                const data = {
+                    ...this.form,
+                    name: this.fullName
+                }
+
+                await this.$emit('save', data, this.category?.id)
                 this.hide()
             } catch (error) {
                 console.error('Save category failed:', error)
@@ -272,6 +302,7 @@ select.form-input {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
 .name-input-wrapper {
     display: flex;
     gap: 8px;
