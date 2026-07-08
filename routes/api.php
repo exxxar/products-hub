@@ -31,6 +31,7 @@ use App\Http\Controllers\IngredientController;
 
 Route::post('/workspaces', [WorkspaceController::class, 'store']);
 Route::post('/workspaces/stats', [WorkspaceLinkController::class, 'stats']);
+Route::post('/workspaces/linked/order', [WorkspaceLinkController::class, 'saveOrder']);
 
 Route::prefix('workspaces/{uuid}')
     ->group(function () {
@@ -48,7 +49,7 @@ Route::prefix('workspaces/{uuid}')
         Route::prefix('workspace')
             ->group(function () {
                 Route::get('/linked', [WorkspaceLinkController::class, 'index']);
-                Route::post('/linked/order', [WorkspaceLinkController::class, 'saveOrder']);
+
                 Route::post('/link', [WorkspaceLinkController::class, 'link'])->middleware('master.unlocked');
                 Route::post('/unlink', [WorkspaceLinkController::class, 'unlink'])->middleware('master.unlocked');
                 Route::post('/create-and-link', [WorkspaceLinkController::class, 'createAndLink'])->middleware('master.unlocked');
