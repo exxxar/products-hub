@@ -146,8 +146,8 @@
     </div>
 </template>
 
-<script>
-import { useWorkspaceStore } from '@/store/workspace.js'
+<script>import { useWorkspaceStore } from '@/store/workspace.js'
+
 import CreateWorkspaceModal from './WorkspaceCreateModal.vue'
 import AddWorkspaceModal from './AddWorkspaceModal.vue'
 import ConfirmModal from '@/Components/Layout/ConfirmModal.vue'

@@ -207,7 +207,7 @@
 
 <script>
 import draggable from 'vuedraggable'
-
+import { useWorkspaceStore } from '@/store/workspace.js'
 export default {
     name: 'WorkspaceCardsGrid',
     components: { draggable },
@@ -220,6 +220,7 @@ export default {
     emits: ['select'],
     data() {
         return {
+            store: useWorkspaceStore(),
             searchQuery: '',
             onlyWithProducts: false,
             isOrdering: false,
@@ -287,7 +288,7 @@ export default {
 
                 if (uuids.length === 0) return
 
-                const response = await axios.post('/api/workspaces/stats', { uuids })
+                const response = await axios.post(`/api/workspaces/${this.store.uuid}/workspace/stats`, { uuids })
 
                 if (response.data?.stats) {
                     this.workspaces.forEach(w => {
@@ -318,7 +319,7 @@ export default {
             this.isSaving = true
             try {
                 const uuids = this.orderingList.map(w => w.uuid)
-                await axios.post('/api/workspaces/linked/order', { uuids })
+                await axios.post(`/api/workspaces/${this.store.uuid}/workspace/linked/order`, { uuids })
 
                 // Обновляем порядок в основном списке
                 const currentWs = this.workspaces.find(w => w.is_current)
