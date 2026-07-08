@@ -330,7 +330,7 @@ export default {
                 // Обновляем локальные данные
                 this.products = this.products.map(p => {
                     if (ids.includes(p.id)) {
-                        return { ...p, in_stop_list: false }
+                        return { ...p, in_stop_list: false, is_active: true}
                     }
                     return p
                 })
