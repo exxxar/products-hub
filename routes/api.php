@@ -123,7 +123,7 @@ Route::prefix('workspaces/{uuid}')
             Route::get('/', [ProductController::class, 'index']);
             Route::post('/', [ProductController::class, 'store'])->middleware('master.unlocked');
 
-            Route::delete('/all', [WorkspaceController::class, 'deleteAllProducts'])
+            Route::delete('/', [WorkspaceController::class, 'deleteAllProducts'])
                 ->middleware('master.unlocked');
 
 
