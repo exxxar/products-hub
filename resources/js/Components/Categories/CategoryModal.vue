@@ -13,12 +13,19 @@
                 <div class="modal-body">
                     <div class="form-group">
                         <label class="form-label">Название</label>
-                        <input
-                            v-model="form.name"
-                            type="text"
-                            class="form-input"
-                            placeholder="Например: Одежда"
-                        />
+                        <div class="name-input-wrapper">
+                            <EmojiPicker v-model="emoji" />
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                class="form-input"
+                                :placeholder="emoji ? 'Название категории...' : 'Например: Одежда'"
+                            />
+                        </div>
+                        <small class="form-hint" v-if="emoji">
+                            <i class="fa-solid fa-circle-info"></i>
+                            Эмодзи будет отображаться в начале названия
+                        </small>
                     </div>
 
                     <div class="form-group">
@@ -66,10 +73,11 @@
 <script>
 import { Modal } from 'bootstrap'
 import { useWorkspaceStore } from '@/store/workspace.js'
+import EmojiPicker from '@/Components/Layout/EmojiPicker.vue'
 
 export default {
     name: 'CategoryModal',
-
+    components:{EmojiPicker},
     props: {
         category: {
             type: Object,
@@ -263,5 +271,28 @@ select.form-input {
 .btn-save:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+.name-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.name-input-wrapper .form-input {
+    flex: 1;
+}
+
+.form-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.form-hint i {
+    color: #0d6efd;
+    font-size: 11px;
 }
 </style>
