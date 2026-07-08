@@ -76,47 +76,28 @@ export default {
     },
 
     actions: {
-
-        async loadProducts(reset = true) {
+        async loadProducts(reset = true, options = {}) {
             if (this.productsLoading) return
-
             this.productsLoading = true
-
-            if (reset) {
-                this.products = []
-            }
+            if (reset) this.products = []
 
             try {
-                const params = new URLSearchParams({
-                    limit: this.batchSize,
-                    offset: reset ? 0 : this.products.length,
-                })
+                const limit = options.limit || this.batchSize
+                const offset = reset ? 0 : this.products.length
+                const params = new URLSearchParams({ limit, offset })
 
-                if (this.search) {
-                    params.append('search', this.search)
-                }
+                // Фильтры
+                if (options.filter === 'active') params.append('is_active', '1')
+                else if (options.filter === 'stop') params.append('in_stop_list', '1')
 
-                if (this.filters.in_stop_list) {
-                    params.append('in_stop_list', '1')
-                }
+                if (this.search) params.append('search', this.search)
 
-                if (this.filters.is_active) {
-                    params.append('is_active', '1')
-                }
+                const response = await axios.get(`/api/workspaces/${this.uuid}/products?${params}`)
 
-                const response = await axios.get(
-                    `/api/workspaces/${this.uuid}/products?${params.toString()}`
-                )
-
-                if (reset) {
-                    this.products = response.data.products
-                } else {
-                    // Добавляем новые к существующим
-                    this.products = [...this.products, ...response.data.products]
-                }
-
+                this.products = reset ? response.data.products : [...this.products, ...response.data.products]
                 this.totalProducts = response.data.total
                 this.hasMoreProducts = response.data.has_more
+                this.batchSize = limit
 
                 return response.data
             } catch (error) {
@@ -127,40 +108,28 @@ export default {
             }
         },
 
-        // ✅ Догрузка следующей порции
-        async loadMoreProducts() {
+        async loadMoreProducts(options = {}) {
             if (this.productsLoadingMore || !this.hasMoreProducts) return
-
             this.productsLoadingMore = true
 
             try {
-                const params = new URLSearchParams({
-                    limit: this.batchSize,
-                    offset: this.products.length,
-                })
+                const limit = options.limit || this.batchSize
+                const offset = this.products.length
+                const params = new URLSearchParams({ limit, offset })
 
-                if (this.search) {
-                    params.append('search', this.search)
-                }
+                if (options.filter === 'active') params.append('is_active', '1')
+                else if (options.filter === 'stop') params.append('in_stop_list', '1')
 
-                if (this.filters.in_stop_list) {
-                    params.append('in_stop_list', '1')
-                }
+                if (this.search) params.append('search', this.search)
 
-                if (this.filters.is_active) {
-                    params.append('is_active', '1')
-                }
+                const response = await axios.get(`/api/workspaces/${this.uuid}/products?${params}`)
 
-                const response = await axios.get(
-                    `/api/workspaces/${this.uuid}/products?${params.toString()}`
-                )
-
-                this.products = [...this.products, ...response.data.products]
+                this.products.push(...response.data.products)
                 this.hasMoreProducts = response.data.has_more
 
                 return response.data
             } catch (error) {
-                console.error('Load more products failed:', error)
+                console.error('Load more failed:', error)
                 throw error
             } finally {
                 this.productsLoadingMore = false

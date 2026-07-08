@@ -44,7 +44,8 @@ Route::prefix('workspaces/{uuid}')
     ->group(function () {
 
         Route::put('/', [WorkspaceController::class, 'update'])->middleware('master.unlocked');
-
+        Route::delete('/', [WorkspaceController::class, 'destroy'])
+            ->middleware('master.unlocked');
 
         Route::prefix('workspace')
             ->group(function () {
@@ -121,6 +122,9 @@ Route::prefix('workspaces/{uuid}')
             // Products
             Route::get('/', [ProductController::class, 'index']);
             Route::post('/', [ProductController::class, 'store'])->middleware('master.unlocked');
+
+            Route::delete('/all', [WorkspaceController::class, 'deleteAllProducts'])
+                ->middleware('master.unlocked');
 
 
             // В api.php добавить:

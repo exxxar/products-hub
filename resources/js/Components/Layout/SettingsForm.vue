@@ -442,6 +442,70 @@
             </template>
         </div>
 
+        <!-- ✅ Вкладка Удаление -->
+        <div v-if="activeTab === 'danger'" class="tab-content">
+            <div class="danger-zone">
+                <div class="danger-header">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <h3>Зона опасности</h3>
+                </div>
+                <p class="danger-desc">
+                    Действия в этом разделе необратимы. Перед удалением рекомендуем сделать дамп данных.
+                </p>
+
+                <!-- Удалить товары -->
+                <div class="danger-card">
+                    <div class="danger-card-content">
+                        <div class="danger-icon-box">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                        <div>
+                            <h4>Удалить все товары</h4>
+                            <p>Удаляет все товары из текущей доски. Категории, коллекции и настройки останутся без изменений.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-danger-outline" @click="confirmDeleteAllProducts">
+                        <i class="fa-solid fa-trash"></i> Удалить товары
+                    </button>
+                </div>
+
+                <!-- Удалить доску -->
+                <div class="danger-card critical">
+                    <div class="danger-card-content">
+                        <div class="danger-icon-box critical">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </div>
+                        <div>
+                            <h4>Удалить всю доску</h4>
+                            <p>Полное удаление workspace. Все товары, категории, коллекции, вебхуки и настройки будут утеряны навсегда.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-danger-filled" @click="confirmDeleteWorkspace">
+                        <i class="fa-solid fa-bomb"></i> Удалить доску
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ✅ Модалки подтверждения -->
+        <ConfirmModal
+            v-model:show="showDeleteProductsModal"
+            title="Удалить все товары?"
+            description="Это действие удалит все товары из доски. Его нельзя отменить. Категории и коллекции сохранятся."
+            type="danger"
+            confirm-text="Удалить все товары"
+            @accept="deleteAllProducts"
+        />
+
+        <ConfirmModal
+            v-model:show="showDeleteWorkspaceModal"
+            title="Удалить доску навсегда?"
+            :description="`Вы уверены, что хотите удалить доску «${store.name || 'Workspace'}»? Все данные будут утеряны.`"
+            type="danger"
+            confirm-text="Удалить доску"
+            @accept="deleteWorkspace"
+        />
+
         <!-- Actions -->
         <div class="form-actions">
             <div v-if="saveStatus" class="save-status" :class="saveStatus.type">
@@ -517,6 +581,11 @@ export default {
 
     data() {
         return {
+
+            showDeleteProductsModal: false,
+            showDeleteWorkspaceModal: false,
+
+
             activeTab: 'base',
             isLoading: false,
             isLoadingLinked: false,
@@ -551,7 +620,8 @@ export default {
                 { key: 'linked', label: 'Доски', icon: 'fa-solid fa-link' },
                 { key: 'vk', label: 'VK', icon: 'fa-brands fa-vk' },
                 { key: 'iiko', label: 'IIKO', icon: 'fa-solid fa-utensils' },
-                { key: 'frontpad', label: 'FrontPad', icon: 'fa-solid fa-mobile-screen' }
+                { key: 'frontpad', label: 'FrontPad', icon: 'fa-solid fa-mobile-screen' },
+                { key: 'danger', label: 'Удаление', icon: 'fa-solid fa-triangle-exclamation' }
             ]
         }
     },
@@ -808,6 +878,31 @@ export default {
 
         goToWorkspace(workspace) {
             this.store.switchWorkspace(workspace.uuid)
+        },
+
+        confirmDeleteAllProducts() { this.showDeleteProductsModal = true },
+        async deleteAllProducts() {
+            try {
+                await axios.delete(`/api/workspaces/${this.store.uuid}/products`)
+                this.$notify?.success('Все товары удалены')
+                // Сбрасываем список товаров
+                this.store.products = []
+                this.store.totalProducts = 0
+                this.store.hasMoreProducts = false
+            } catch (error) {
+                this.$notify?.error('Ошибка при удалении')
+            }
+        },
+        confirmDeleteWorkspace() { this.showDeleteWorkspaceModal = true },
+        async deleteWorkspace() {
+            try {
+                await axios.delete(`/api/workspaces/${this.store.uuid}`)
+                this.$notify?.success('Доска удалена')
+                // Редирект на дашборд
+                setTimeout(() => window.location.href = '/dashboard', 1000)
+            } catch (error) {
+                this.$notify?.error('Ошибка при удалении доски')
+            }
         }
     }
 }
@@ -2022,5 +2117,108 @@ export default {
     .display-mode-switcher {
         grid-template-columns: 1fr;
     }
+}
+
+.danger-zone {
+    max-width: 600px;
+}
+.danger-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.danger-header i {
+    color: #dc3545;
+    font-size: 20px;
+}
+.danger-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #dc3545;
+    margin: 0;
+}
+.danger-desc {
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+.danger-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid #f5c2c7;
+    border-radius: 12px;
+    background: #fff5f5;
+    margin-bottom: 12px;
+}
+.danger-card.critical {
+    border-color: #dc3545;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe6e6 100%);
+}
+.danger-card-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.danger-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #f8d7da;
+    color: #dc3545;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.danger-icon-box.critical {
+    background: #dc3545;
+    color: #fff;
+}
+.danger-card h4 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 4px 0;
+}
+.danger-card p {
+    font-size: 13px;
+    color: #6c757d;
+    margin: 0;
+}
+.btn-danger-outline,
+.btn-danger-filled {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.btn-danger-outline {
+    border: 1px solid #dc3545;
+    background: #fff;
+    color: #dc3545;
+}
+.btn-danger-outline:hover { background: #dc3545; color: #fff; }
+.btn-danger-filled {
+    border: none;
+    background: linear-gradient(135deg, #dc3545 0%, #bb2d3b 100%);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.2);
+}
+.btn-danger-filled:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3); }
+
+@media (max-width: 576px) {
+    .danger-card { flex-direction: column; align-items: flex-start; }
+    .btn-danger-outline, .btn-danger-filled { width: 100%; justify-content: center; }
 }
 </style>
