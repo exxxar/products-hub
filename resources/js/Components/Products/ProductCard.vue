@@ -461,7 +461,7 @@ export default {
 /* Десктоп (768px+) - вертикальный layout */
 @media (min-width: 768px) {
     .product-card {
-        aspect-ratio: 3 / 4;
+        aspect-ratio: auto;
     }
 
     .card-body {

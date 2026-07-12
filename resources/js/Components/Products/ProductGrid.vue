@@ -167,7 +167,7 @@ export default {
 }
 
 .product-card-wrapper {
-    aspect-ratio: 1;
+    aspect-ratio: auto;
     min-width: 0;
 }
 
@@ -439,7 +439,7 @@ export default {
 
     /* Сетка на всю ширину */
     .product-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(1, 1fr);
         gap: 8px;
     }
 
