@@ -19,84 +19,66 @@
 
         <!-- БЕЙДЖИ -->
         <div class="card-badges">
-            <!-- Бейдж "В стоп-листе" -->
             <div v-if="product.in_stop_list" class="badge badge-stop">
                 <i class="fa-solid fa-ban"></i>
-                <span>В стоп-листе</span>
             </div>
-
-            <!-- Бейдж "Не активен" -->
-            <div v-else-if="!product.is_active" class="badge badge-inactive">
-                <i class="fa-solid fa-eye-slash"></i>
-                <span>Не активен</span>
-            </div>
-
-            <!-- Бейдж скидки -->
             <div
                 v-if="product.old_price && product.old_price > product.price"
                 class="badge badge-discount"
             >
-                <i class="fa-solid fa-tag"></i>
-                <span>-{{ discountPercent }}%</span>
+                -{{ discountPercent }}%
             </div>
         </div>
 
-        <!-- Изображение -->
-        <div class="card-image">
-            <img v-if="product.images?.length"
-                 v-lazy="product.images[0].url" :alt="product.name" />
-            <div v-else class="image-placeholder">
-                <i class="fa-solid fa-image"></i>
-            </div>
+        <!-- ✅ Горизонтальный layout для мобильных -->
+        <div class="card-body">
+            <!-- Изображение -->
+            <div class="card-image">
+                <img v-if="product.images?.length"
+                     v-lazy="product.images[0].url" :alt="product.name" />
+                <div v-else class="image-placeholder">
+                    <i class="fa-solid fa-image"></i>
+                </div>
 
-            <!-- ✅ Счётчик картинок + кнопка редактирования -->
-            <div class="image-actions">
+                <!-- Счётчик картинок -->
                 <div v-if="product.images?.length" class="images-count">
                     <i class="fa-solid fa-images"></i>
                     <span>{{ product.images.length }}</span>
                 </div>
-                <button
-                    type="button"
-                    class="btn-edit-images"
-                    @click.stop="openImagesModal"
-                    title="Редактировать изображения"
-                >
-                    <i class="fa-solid fa-pen"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- Контент -->
-        <div class="card-content">
-            <div class="card-title">{{ product.name }}</div>
-
-            <div v-if="product.sku" class="card-sku">
-                <i class="fa-solid fa-barcode"></i>
-                {{ product.sku }}
             </div>
 
-            <div class="card-price">
-                <span
-                    v-if="product.old_price && product.old_price > product.price"
-                    class="old-price"
-                >
-                    {{ formatPrice(product.old_price) }}
-                </span>
-                <span class="current-price">{{ formatPrice(product.price) }}</span>
-            </div>
+            <!-- Контент -->
+            <div class="card-content">
+                <div class="card-title">{{ product.name }}</div>
 
-            <!-- Категории -->
-            <div v-if="product.categories && product.categories.length > 0" class="card-categories">
-                <span
-                    v-for="category in product.categories.slice(0, 2)"
-                    :key="category.id"
-                    class="category-tag"
-                >
-                    {{ category.name }}
-                </span>
-                <span v-if="product.categories.length > 2" class="category-more">
-                    +{{ product.categories.length - 2 }}
-                </span>
+                <div v-if="product.sku" class="card-sku">
+                    <i class="fa-solid fa-barcode"></i>
+                    {{ product.sku }}
+                </div>
+
+                <div class="card-price">
+                    <span
+                        v-if="product.old_price && product.old_price > product.price"
+                        class="old-price"
+                    >
+                        {{ formatPrice(product.old_price) }}
+                    </span>
+                    <span class="current-price">{{ formatPrice(product.price) }}</span>
+                </div>
+
+                <!-- Категории -->
+                <div v-if="product.categories && product.categories.length > 0" class="card-categories">
+                    <span
+                        v-for="category in product.categories.slice(0, 1)"
+                        :key="category.id"
+                        class="category-tag"
+                    >
+                        {{ category.name }}
+                    </span>
+                    <span v-if="product.categories.length > 1" class="category-more">
+                        +{{ product.categories.length - 1 }}
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -119,6 +101,14 @@
             >
                 <i class="fa-solid fa-pen"></i>
             </button>
+            <button
+                type="button"
+                class="action-btn"
+                @click="openImagesModal"
+                title="Изображения"
+            >
+                <i class="fa-solid fa-images"></i>
+            </button>
         </div>
     </div>
 </template>
@@ -138,7 +128,7 @@ export default {
         }
     },
 
-    emits: ['toggle-select', 'edit-product', 'toggle-stop-list','edit-images'],
+    emits: ['toggle-select', 'edit-product', 'toggle-stop-list', 'edit-images'],
 
     computed: {
         discountPercent() {
@@ -156,6 +146,7 @@ export default {
         openImagesModal() {
             this.$emit('edit-images', this.product)
         },
+
         handleCardClick() {
             this.$emit('toggle-select', this.product.id)
         },
@@ -191,7 +182,6 @@ export default {
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.2);
 }
 
-
 .product-card.is-selected:hover {
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.3), 0 6px 16px rgba(13, 110, 253, 0.2);
 }
@@ -219,20 +209,19 @@ export default {
 /* === Чекбокс === */
 .card-checkbox {
     position: absolute;
-    top: 10px;
-    left: 10px;
+    top: 8px;
+    left: 8px;
     z-index: 3;
 }
 
 .card-checkbox input {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     cursor: pointer;
     accent-color: #0d6efd;
     border-radius: 4px;
 }
 
-/* ✅ Подсветка чекбокса при выделении */
 .product-card.is-selected .card-checkbox input {
     accent-color: #0d6efd;
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.3);
@@ -241,8 +230,8 @@ export default {
 /* === БЕЙДЖИ === */
 .card-badges {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 8px;
+    right: 8px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -252,20 +241,19 @@ export default {
 .badge {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
+    justify-content: center;
+    padding: 4px 6px;
     border-radius: 6px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     white-space: nowrap;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .badge i {
-    font-size: 10px;
+    font-size: 9px;
 }
 
-/* Красный бейдж "В стоп-листе" */
 .badge-stop {
     background: #dc3545;
     color: #fff;
@@ -281,25 +269,27 @@ export default {
     }
 }
 
-/* Серый бейдж "Не активен" */
-.badge-inactive {
-    background: #6c757d;
-    color: #fff;
-}
-
-/* Бейдж скидки */
 .badge-discount {
     background: #fd7e14;
     color: #fff;
 }
 
-/* === ✅ Изображение с действиями === */
+/* === ✅ Горизонтальный layout === */
+.card-body {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+}
+
+/* === Изображение === */
 .card-image {
     position: relative;
-    width: 100%;
-    height: 180px;
+    width: 33.333%;
+    min-width: 33.333%;
     background: #f8f9fa;
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .card-image img {
@@ -321,89 +311,41 @@ export default {
     justify-content: center;
     background: #e9ecef;
     color: #adb5bd;
-    font-size: 40px;
-}
-
-/* Контейнер для действий на картинке */
-.image-actions {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    display: flex;
-    gap: 6px;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.product-card:hover .image-actions {
-    opacity: 1;
+    font-size: 32px;
 }
 
 .images-count {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
+    gap: 3px;
+    padding: 3px 6px;
     background: rgba(0, 0, 0, 0.6);
     color: #fff;
-    border-radius: 6px;
-    font-size: 11px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 600;
     backdrop-filter: blur(4px);
 }
 
 .images-count i {
-    font-size: 10px;
-}
-
-.btn-edit-images {
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.95);
-    color: #0d6efd;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    transition: all 0.15s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.btn-edit-images:hover {
-    background: #0d6efd;
-    color: #fff;
-    transform: scale(1.1);
-}
-
-.product-card:hover .card-image img {
-    transform: scale(1.05);
-}
-
-.image-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #e9ecef;
-    color: #adb5bd;
-    font-size: 40px;
+    font-size: 9px;
 }
 
 /* === Контент === */
 .card-content {
-    padding: 12px;
     flex: 1;
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
+    min-width: 0;
 }
 
 .card-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #212529;
     line-height: 1.3;
@@ -414,28 +356,32 @@ export default {
 }
 
 .card-sku {
-    font-size: 11px;
+    font-size: 10px;
     color: #6c757d;
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
+.card-sku i {
+    font-size: 9px;
+}
+
 .card-price {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 4px;
+    gap: 6px;
+    margin-top: 2px;
 }
 
 .current-price {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
     color: #212529;
 }
 
 .old-price {
-    font-size: 13px;
+    font-size: 12px;
     color: #adb5bd;
     text-decoration: line-through;
 }
@@ -444,32 +390,36 @@ export default {
 .card-categories {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 3px;
+    margin-top: auto;
 }
 
 .category-tag {
-    padding: 2px 8px;
+    padding: 2px 6px;
     background: #e7f1ff;
     color: #084298;
-    border-radius: 10px;
-    font-size: 10px;
+    border-radius: 8px;
+    font-size: 9px;
     font-weight: 500;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .category-more {
-    padding: 2px 8px;
+    padding: 2px 6px;
     background: #f1f3f5;
     color: #6c757d;
-    border-radius: 10px;
-    font-size: 10px;
+    border-radius: 8px;
+    font-size: 9px;
 }
 
 /* === Кнопки действий === */
 .card-actions {
     display: flex;
     gap: 4px;
-    padding: 8px 12px;
+    padding: 8px;
     border-top: 1px solid #f1f3f5;
     background: #fafbfc;
 }
@@ -486,6 +436,7 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 12px;
 }
 
 .action-btn:hover {
@@ -501,5 +452,271 @@ export default {
 .action-btn.active:hover {
     background: #dc3545;
     color: #fff;
+}
+
+/* ============================================
+   АДАПТИВНАЯ ВЕРСТКА
+   ============================================ */
+
+/* Десктоп (768px+) - вертикальный layout */
+@media (min-width: 768px) {
+    .product-card {
+        aspect-ratio: 3 / 4;
+    }
+
+    .card-body {
+        flex-direction: column;
+    }
+
+    .card-image {
+        width: 100%;
+        min-width: 100%;
+        height: 180px;
+    }
+
+    .card-content {
+        padding: 12px;
+        gap: 6px;
+    }
+
+    .card-title {
+        font-size: 14px;
+    }
+
+    .card-sku {
+        font-size: 11px;
+    }
+
+    .current-price {
+        font-size: 18px;
+    }
+
+    .old-price {
+        font-size: 13px;
+    }
+
+    .category-tag,
+    .category-more {
+        font-size: 10px;
+        padding: 2px 8px;
+    }
+
+    .card-checkbox {
+        top: 10px;
+        left: 10px;
+    }
+
+    .card-checkbox input {
+        width: 20px;
+        height: 20px;
+    }
+
+    .card-badges {
+        top: 10px;
+        right: 10px;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .badge i {
+        font-size: 10px;
+    }
+
+    .images-count {
+        bottom: 8px;
+        right: 8px;
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .images-count i {
+        font-size: 10px;
+    }
+
+    .image-placeholder {
+        font-size: 40px;
+    }
+
+    .card-actions {
+        padding: 8px 12px;
+    }
+
+    .action-btn {
+        font-size: 13px;
+    }
+}
+
+/* Мобильный (до 767px) - горизонтальный layout */
+@media (max-width: 767px) {
+    .product-card {
+        aspect-ratio: auto;
+        min-height: 120px;
+    }
+
+    .card-body {
+        flex-direction: row;
+        height: 100%;
+    }
+
+    .card-image {
+        width: 33.333%;
+        min-width: 33.333%;
+        height: auto;
+    }
+
+    .card-content {
+        padding: 8px;
+        gap: 3px;
+    }
+
+    .card-title {
+        font-size: 12px;
+        -webkit-line-clamp: 2;
+    }
+
+    .card-sku {
+        font-size: 9px;
+    }
+
+    .current-price {
+        font-size: 14px;
+    }
+
+    .old-price {
+        font-size: 11px;
+    }
+
+    .category-tag,
+    .category-more {
+        font-size: 8px;
+        padding: 1px 5px;
+    }
+
+    .card-checkbox {
+        top: 6px;
+        left: 6px;
+    }
+
+    .card-checkbox input {
+        width: 16px;
+        height: 16px;
+    }
+
+    .card-badges {
+        top: 6px;
+        right: 6px;
+        gap: 3px;
+    }
+
+    .badge {
+        padding: 3px 5px;
+        font-size: 9px;
+    }
+
+    .badge i {
+        font-size: 8px;
+    }
+
+    .images-count {
+        bottom: 4px;
+        right: 4px;
+        padding: 2px 5px;
+        font-size: 9px;
+    }
+
+    .images-count i {
+        font-size: 8px;
+    }
+
+    .image-placeholder {
+        font-size: 24px;
+    }
+
+    .card-actions {
+        padding: 6px;
+        gap: 3px;
+    }
+
+    .action-btn {
+        padding: 5px;
+        font-size: 11px;
+    }
+}
+
+/* Очень маленький экран (до 380px) */
+@media (max-width: 380px) {
+    .product-card {
+        min-height: 110px;
+    }
+
+    .card-content {
+        padding: 6px;
+        gap: 2px;
+    }
+
+    .card-title {
+        font-size: 11px;
+    }
+
+    .card-sku {
+        font-size: 8px;
+    }
+
+    .current-price {
+        font-size: 13px;
+    }
+
+    .old-price {
+        font-size: 10px;
+    }
+
+    .category-tag,
+    .category-more {
+        font-size: 7px;
+        padding: 1px 4px;
+    }
+
+    .card-checkbox {
+        top: 4px;
+        left: 4px;
+    }
+
+    .card-checkbox input {
+        width: 14px;
+        height: 14px;
+    }
+
+    .card-badges {
+        top: 4px;
+        right: 4px;
+    }
+
+    .badge {
+        padding: 2px 4px;
+        font-size: 8px;
+    }
+
+    .images-count {
+        bottom: 3px;
+        right: 3px;
+        padding: 2px 4px;
+        font-size: 8px;
+    }
+
+    .image-placeholder {
+        font-size: 20px;
+    }
+
+    .card-actions {
+        padding: 5px;
+    }
+
+    .action-btn {
+        padding: 4px;
+        font-size: 10px;
+    }
 }
 </style>
