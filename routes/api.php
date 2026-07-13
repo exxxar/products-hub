@@ -117,6 +117,17 @@ Route::prefix('workspaces/{uuid}')
         });
 
 
+        Route::prefix('workspace-groups')->middleware('workspace.auth')->group(function () {
+            Route::get('/', [WorkspaceGroupController::class, 'index']);
+            Route::post('/', [WorkspaceGroupController::class, 'store']);
+            Route::put('/{group}', [WorkspaceGroupController::class, 'update']);
+            Route::delete('/{group}', [WorkspaceGroupController::class, 'destroy']);
+            Route::put('/{group}/workspaces', [WorkspaceGroupController::class, 'updateWorkspaces']);
+            Route::post('/{group}/webhooks', [WorkspaceGroupController::class, 'updateWebhooks']);
+            Route::post('/{group}/sync', [WorkspaceGroupController::class, 'sync']);
+        });
+
+
         // Товары
         Route::prefix('products')->group(function () {
             // Products

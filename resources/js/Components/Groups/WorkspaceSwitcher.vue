@@ -3,7 +3,7 @@
         <!-- Триггер -->
         <button type="button" class="current-workspace" @click="togglePanel">
             <div class="workspace-icon" :style="{ background: store.workspaceColor }">
-                <img v-if="store.workspaceLogo" :src="store.workspaceLogo" alt="" />
+                <img v-if="store.workspaceLogo" v-lazy="store.workspaceLogo" alt="" />
                 <span v-else>{{ store.workspaceInitials }}</span>
             </div>
             <div class="workspace-info">
@@ -65,7 +65,7 @@
                     <!-- Текущая -->
                     <div class="ws-item is-current">
                         <div class="ws-icon" :style="{ background: store.workspaceColor }">
-                            <img v-if="store.workspaceLogo" :src="store.workspaceLogo" alt="" />
+                            <img v-if="store.workspaceLogo" v-lazy="store.workspaceLogo" alt="" />
                             <span v-else>{{ store.workspaceInitials }}</span>
                         </div>
                         <div class="ws-info">
@@ -83,7 +83,7 @@
                             class="ws-item"
                         >
                             <div class="ws-icon" :style="{ background: workspace.color }">
-                                <img v-if="workspace.logo_url" :src="workspace.logo_url" alt="" />
+                                <img v-if="workspace.logo_url" v-lazy="workspace.logo_url" alt="" />
                                 <span v-else>{{ workspace.initials }}</span>
                             </div>
                             <div class="ws-info" @click="selectWorkspace(workspace)">

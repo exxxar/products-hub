@@ -161,6 +161,7 @@ export default {
 /* === Config Toggle === */
 .config-toggle-wrapper {
     width: 100%;
+    max-width:400px;
 }
 
 .config-btn {

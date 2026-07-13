@@ -89,7 +89,7 @@
                 @click="$emit('select', workspace)"
             >
                 <div class="card-icon" :style="{ background: workspace.color || '#0d6efd' }">
-                    <img v-if="workspace.logo_url" :src="workspace.logo_url" alt="" />
+                    <img v-if="workspace.logo_url" v-lazy="workspace.logo_url" alt="" />
                     <span v-else>{{ getInitials(workspace) }}</span>
                 </div>
 

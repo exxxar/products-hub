@@ -10,6 +10,7 @@ export default {
     }),
 
     getters: {
+        getAllWorkspaces: (state)=> state.allWorkspaces,
         workspaceLogo: (state) => state.currentWorkspace?.logo_url,
         workspaceLabel: (state) => state.currentWorkspace?.label,
         workspaceColor: (state) => state.currentWorkspace?.color || '#0d6efd',

@@ -52,7 +52,7 @@
                     <div v-if="foundWorkspace" class="found-workspace">
                         <div class="found-card">
                             <div class="found-icon" :style="{ background: foundWorkspace.color }">
-                                <img v-if="foundWorkspace.logo_url" :src="foundWorkspace.logo_url" alt="" />
+                                <img v-if="foundWorkspace.logo_url" v-lazy="foundWorkspace.logo_url" alt="" />
                                 <span v-else>{{ foundWorkspace.initials }}</span>
                             </div>
                             <div class="found-info">

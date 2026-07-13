@@ -20,6 +20,8 @@
                 @toggle-sidebar="needSidebar = $event"
                 @open-menu-generator="openMenuGenerator"
             />
+
+
         </div>
 
 
@@ -51,6 +53,22 @@
                         :workspaces="allWorkspaces"
                         @select="goToWorkspace"
                     />
+
+
+                    <!-- ✅ Кнопка открытия сайдбара групп -->
+                    <button
+                        type="button"
+                        class="btn-open-groups"
+                        @click="showGroupsSidebar = true"
+                        title="Группы досок"
+                    >
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span class="btn-label">Группы</span>
+                        <span v-if="store.groupsCount > 0" class="groups-badge">{{ store.groupsCount }}</span>
+                    </button>
+
+                    <!-- ✅ Сайдбар групп -->
+                    <GroupsSidebar v-model="showGroupsSidebar" />
                 </template>
 
                 <!-- РЕЖИМ ТОВАРОВ (по умолчанию) -->
@@ -243,6 +261,8 @@
             @install="handleInstall"
         />
 
+       ced="onGroupSynced" />
+
         <ProductImagesModal   v-model="showImagesModal"
                               :product="productForImages" />
     </div>
@@ -278,10 +298,13 @@ import WorkspaceCardsGrid from '@/Components/Groups/WorkspaceCardsGrid.vue'
 import LoadMoreButton from '@/Components/Products/LoadMoreButton.vue'
 import ProductImagesModal from '@/Components/Products/ProductImagesModal.vue'
 
+import GroupsSidebar from '@/Components/Groups/GroupsSidebar.vue'
+
 export default {
     name: 'Workspace',
 
     components: {
+        GroupsSidebar,
         ProductImagesModal,
         LoadMoreButton,
         WorkspaceCardsGrid,
@@ -320,7 +343,7 @@ export default {
 
     data() {
         return {
-
+            currentGroup: null,
             deferredPrompt: null,
             showActivityLog: false,
             workspace: null,
@@ -333,6 +356,8 @@ export default {
             webhook: null,
             showImagesModal: false,
             productForImages: null,
+
+            showGroupsSidebar: false,
         }
     },
     watch: {
@@ -417,6 +442,7 @@ export default {
         }
 
         this.store.loadProducts(true)
+        this.loadGroups()
 
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault()
@@ -435,6 +461,76 @@ export default {
         this.store.stopPresenceTracking()
     },
     methods: {
+        async loadGroups() {
+            try {
+                await this.store.loadGroups()
+            } catch (error) {
+                console.error('Failed to load groups:', error)
+            }
+        },
+
+
+        // ✅ Выбор группы из мини-списка
+        selectGroup(group) {
+            this.store.selectGroup(group.id)
+        },
+
+        // ✅ После создания группы
+        async onGroupCreated(group) {
+            // Список уже перезагружен в store.createGroup()
+            // Автоматически открывается панель текущей группы
+
+            this.$notify?.success({
+                title: 'Группа создана',
+                message: `«${group.name}» с ${group.workspaces?.length || 0} досками`
+            })
+        },
+
+        // ✅ Открытие модалки вебхуков
+        openWebhookModal() {
+            if (!this.store.currentGroup) return
+            this.$refs.webhookModal.show(this.store.currentGroup)
+        },
+
+        // ✅ После сохранения вебхуков
+        async onWebhooksSaved() {
+            // Группы уже перезагружены в store.updateGroupWebhooks()
+
+            this.$notify?.success({
+                title: 'Вебхуки обновлены',
+                message: `Для ${this.store.currentGroup?.workspaces?.length || 0} досок группы`
+            })
+        },
+
+        // ✅ Открытие модалки синхронизации
+        openSyncModal() {
+            if (!this.store.currentGroup) return
+            this.$refs.syncModal.show(this.store.currentGroup)
+        },
+
+        // ✅ После синхронизации
+        async onGroupSynced(results) {
+            // Группы уже перезагружены в store.syncGroup()
+
+            const successCount = results.filter(r => r.success).length
+            const failCount = results.length - successCount
+            const totalProducts = results.reduce((sum, r) => sum + (r.products_synced || 0), 0)
+
+            if (failCount === 0) {
+                this.$notify?.success({
+                    title: 'Синхронизация завершена',
+                    message: `${successCount} досок, ${totalProducts} товаров`
+                })
+            } else {
+                this.$notify?.warning({
+                    title: 'Синхронизация с ошибками',
+                    message: `${successCount} успешно, ${failCount} с ошибками`
+                })
+            }
+        },
+
+
+
         openImagesModal(product) {
             this.productForImages = product
             this.showImagesModal = true
@@ -798,6 +894,15 @@ export default {
             if (this.$refs.webhookModal) {
                 this.$refs.webhookModal.show()
             }
+        },
+
+        pluralize(count, one, two, five) {
+            let n = Math.abs(count) % 100
+            if (n >= 5 && n <= 20) return five
+            n %= 10
+            if (n === 1) return one
+            if (n >= 2 && n <= 4) return two
+            return five
         },
 
         async handleSaveSettings(formData) {
@@ -1249,5 +1354,229 @@ export default {
     position: fixed;
     bottom: 40px;
     right: 5px;
+}
+
+.group-panel {
+    position: fixed;
+    bottom: 60px; /* Над футером */
+    right: 20px;
+    width: 320px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    overflow: hidden;
+}
+
+.group-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+    border-bottom: 1px solid #e9ecef;
+}
+
+.group-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.group-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.group-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #212529;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.group-meta {
+    font-size: 11px;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.btn-close-group {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #adb5bd;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.btn-close-group:hover {
+    background: #f1f3f5;
+    color: #495057;
+}
+
+/* === Список досок в группе === */
+.group-workspaces {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.group-ws-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.group-ws-item:hover {
+    background: #f8f9fa;
+}
+
+.group-ws-item.is-current {
+    background: #e7f1ff;
+}
+
+.ws-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.ws-name {
+    flex: 1;
+    font-size: 13px;
+    color: #212529;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-current {
+    color: #198754;
+    font-size: 12px;
+}
+
+/* === Кнопки действий === */
+.group-actions {
+    display: flex;
+    gap: 6px;
+    padding: 10px;
+    background: #fafbfc;
+}
+
+.btn-action {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+}
+
+.btn-action.primary {
+    background: #0d6efd;
+    color: #fff;
+}
+
+.btn-action.primary:hover {
+    background: #0b5ed7;
+}
+
+.btn-action.secondary {
+    background: #fff;
+    color: #495057;
+    border: 1px solid #dee2e6;
+}
+
+.btn-action.secondary:hover {
+    background: #f8f9fa;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.btn-open-groups {
+    position: fixed;
+    bottom: 60px;
+    left: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    color: #495057;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.15s ease;
+    z-index: 99;
+}
+
+.btn-open-groups:hover {
+    border-color: #6f42c1;
+    color: #6f42c1;
+    box-shadow: 0 4px 12px rgba(111, 66, 193, 0.15);
+}
+
+.btn-open-groups i {
+    color: #6f42c1;
+}
+
+.groups-badge {
+    padding: 2px 7px;
+    background: #6f42c1;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+@media (max-width: 576px) {
+    .btn-open-groups {
+        bottom: 20px;
+        left: 90px; /* Правее FAB кнопки */
+    }
+
+    .btn-label {
+        display: none;
+    }
 }
 </style>

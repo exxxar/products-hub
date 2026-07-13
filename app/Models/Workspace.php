@@ -37,6 +37,8 @@ class Workspace extends Model
         'initials',
     ];
 
+    protected $with = ["webhooks"];
+
     public function menuConfig()
     {
         return $this->hasOne(MenuConfig::class);
@@ -77,6 +79,48 @@ class Workspace extends Model
         return $this->hasMany(Ingredient::class);
     }
 
+    /**
+     * Группы, в которые входит этот workspace
+     * (Many-to-Many через workspace_group_members)
+     */
+    public function groups()
+    {
+        return $this->belongsToMany(
+            WorkspaceGroup::class,           // Связанная модель
+            'workspace_group_members',       // Промежуточная таблица
+            'workspace_id',                  // Внешний ключ текущей модели в pivot
+            'workspace_group_id'             // Внешний ключ связанной модели в pivot
+        )
+            ->withPivot('sort_order')            // Дополнительные поля из pivot
+            ->withTimestamps()                   // created_at, updated_at в pivot
+            ->orderBy('workspace_group_members.sort_order'); // Сортировка
+    }
+
+    /**
+     * Проверка: состоит ли workspace в конкретной группе
+     */
+    public function isInGroup(WorkspaceGroup $group): bool
+    {
+        return $this->groups()->where('workspace_groups.id', $group->id)->exists();
+    }
+
+    /**
+     * Присоединить workspace к группе
+     */
+    public function joinGroup(WorkspaceGroup $group, int $sortOrder = 0): void
+    {
+        if (!$this->isInGroup($group)) {
+            $this->groups()->attach($group->id, ['sort_order' => $sortOrder]);
+        }
+    }
+
+    /**
+     * Покинуть группу
+     */
+    public function leaveGroup(WorkspaceGroup $group): void
+    {
+        $this->groups()->detach($group->id);
+    }
 
 
     // === Работа с settings ===
