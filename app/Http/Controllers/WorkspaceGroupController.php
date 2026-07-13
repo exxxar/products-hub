@@ -191,7 +191,7 @@ class WorkspaceGroupController extends Controller
     /**
      * Пакетная синхронизация досок в группе
      */
-    public function sync(Request $request, WorkspaceGroup $group)
+    public function sync(Request $request, $workspaceUuid, WorkspaceGroup $group)
     {
         $currentWorkspace = App::make('workspace');
 
