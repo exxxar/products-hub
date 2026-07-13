@@ -68,7 +68,7 @@ class WorkspaceGroupController extends Controller
     /**
      * Обновление группы и её состава
      */
-    public function update(Request $request, WorkspaceGroup $group)
+    public function update(Request $request,$workspaceUuid, WorkspaceGroup $group)
     {
         $workspace = App::make('workspace');
 
