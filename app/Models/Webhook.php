@@ -99,7 +99,7 @@ class Webhook extends Model
 
     /**
      * Сформировать payload для вебхука
-     * ✅ ИСПРАВЛЕНИЕ 2: Более плоская и стандартная структура, которую принимают большинство API
+     * Структура адаптирована под строгую валидацию принимающего API
      */
     protected function buildPayload($product = null)
     {
@@ -112,9 +112,12 @@ class Webhook extends Model
                 return [
                     'event' => 'product.updated',
                     'timestamp' => now()->toISOString(),
-                    'workspace_id' => $workspace->id,          // ✅ Вынесли на верхний уровень
-                    'workspace_uuid' => $workspace->uuid,      // ✅ Вынесли на верхний уровень
-                    'data' => [                                // ✅ Сами данные теперь в ключе 'data'
+                    'workspace' => [
+                        'id' => $workspace->id,
+                        'uuid' => $workspace->uuid,
+                        'name' => $workspace->name
+                    ],
+                    'data' => [
                         'product' => $this->buildProductData($product)
                     ]
                 ];
@@ -124,10 +127,10 @@ class Webhook extends Model
                 return [
                     'event' => 'workspace.sync',
                     'timestamp' => now()->toISOString(),
-                    'workspace_id' => $workspace->id,          // ✅ Вынесли на верхний уровень
-                    'workspace_uuid' => $workspace->uuid,      // ✅ Вынесли на верхний уровень
-                    'workspace_name' => $workspace->name,
-                    'data' => [                                // ✅ Сами данные теперь в ключе 'data'
+                    'workspace' => [
+                        'id' => $workspace->id,
+                        'uuid' => $workspace->uuid,
+                        'name' => $workspace->name,
                         'products' => collect($workspace->products ?? [])->map(function ($p) {
                             return $this->buildProductData($p);
                         })->values()->all()
@@ -140,12 +143,16 @@ class Webhook extends Model
                 'error' => $e->getMessage(),
             ]);
 
+            // Возвращаем минимальный валидный payload даже при ошибке сборки
             return [
                 'event' => $product ? 'product.updated' : 'workspace.sync',
                 'timestamp' => now()->toISOString(),
                 'error' => 'Failed to build complete payload',
-                'workspace_id' => $this->workspace->id,
-                'workspace_uuid' => $this->workspace->uuid,
+                'workspace' => [
+                    'id' => $this->workspace->id,
+                    'uuid' => $this->workspace->uuid,
+                    'name' => $this->workspace->name,
+                ]
             ];
         }
     }
