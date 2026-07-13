@@ -30,6 +30,95 @@ class Webhook extends Model
     }
 
     /**
+     * Реальная синхронизация товаров через вебхук
+     */
+    public function syncProducts(): array
+    {
+        try {
+            $workspace = $this->workspace;
+
+            // 1. Собираем данные для отправки (адаптируйте под структуру вашего внешнего API)
+            $products = $workspace->products()
+                ->with(['categories:id,name', 'attributes:name,value'])
+                ->get()
+                ->map(function ($product) {
+                    return [
+                        'id' => $product->id,
+                        'sku' => $product->sku,
+                        'name' => $product->name,
+                        'price' => (float) $product->price,
+                        'old_price' => $product->old_price ? (float) $product->old_price : null,
+                        'is_active' => (bool) $product->is_active,
+                        'in_stop_list' => (bool) $product->in_stop_list,
+                        'categories' => $product->categories->pluck('name')->toArray(),
+                    ];
+                });
+
+            $payload = [
+                'workspace_uuid' => $workspace->uuid,
+                'workspace_name' => $workspace->name,
+                'action' => 'full_sync',
+                'timestamp' => now()->toIso8601String(),
+                'data' => [
+                    'products' => $products->toArray(),
+                    'total_count' => $products->count(),
+                ]
+            ];
+
+            // 2. Делаем HTTP запрос
+            $response = Http::timeout(30) // Таймаут 30 секунд
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'User-Agent' => 'Workspace-Aggregator/1.0'
+            ])
+                ->post($this->url, $payload);
+
+            // 3. Обрабатываем ответ
+            if ($response->successful()) {
+                $this->update([
+                    'last_synced_at' => now(),
+                    'last_status' => 'success'
+                ]);
+
+                return [
+                    'success' => true,
+                    'products_synced' => $products->count(),
+                    'error' => null,
+                ];
+            } else {
+                $this->update(['last_status' => 'failed']);
+
+                $errorMsg = "HTTP {$response->status()}: " . mb_substr($response->body(), 0, 100);
+
+                return [
+                    'success' => false,
+                    'products_synced' => 0,
+                    'error' => $errorMsg,
+                ];
+            }
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->update(['last_status' => 'connection_error']);
+            Log::error("Webhook Connection Error: {$this->url}", ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'products_synced' => 0,
+                'error' => 'Ошибка соединения (проверьте URL и доступность сервера)',
+            ];
+        } catch (\Exception $e) {
+            $this->update(['last_status' => 'error']);
+            Log::error("Webhook Sync Error: {$this->url}", ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'products_synced' => 0,
+                'error' => 'Внутренняя ошибка: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Отправить синхронизацию
      */
     public function sync($product = null)

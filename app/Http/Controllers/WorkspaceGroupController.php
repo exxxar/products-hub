@@ -235,7 +235,7 @@ class WorkspaceGroupController extends Controller
             }
 
             // Вызываем РЕАЛЬНЫЙ метод синхронизации
-            $syncResult = $webhook->sync();
+            $syncResult = $webhook->syncProducts();
 
             $results[] = [
                 'workspace_id' => $ws->id,
