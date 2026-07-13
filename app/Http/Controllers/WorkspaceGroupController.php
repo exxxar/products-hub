@@ -185,9 +185,7 @@ class WorkspaceGroupController extends Controller
             'results' => $results
         ]);
     }
-    /**
-     * Пакетная синхронизация
-     */
+
     /**
      * Пакетная синхронизация досок в группе
      */
@@ -214,7 +212,6 @@ class WorkspaceGroupController extends Controller
 
         foreach ($targetWorkspaces as $ws) {
             // Ищем вебхук, который мы настроили через модалку группы
-            // Если его нет, берем первый активный вебхук этой доски
             $webhook = $ws->webhooks()
                 ->where(function($q) {
                     $q->where('name', 'Групповой вебхук')
@@ -234,15 +231,21 @@ class WorkspaceGroupController extends Controller
                 continue;
             }
 
-            // Вызываем РЕАЛЬНЫЙ метод синхронизации
-            $syncResult = $webhook->syncProducts();
+            // ✅ ИСПРАВЛЕНИЕ: Вызываем правильный метод sync(), который возвращает true/false
+            $isSuccess = $webhook->sync();
+
+            // Если успех, считаем количество товаров, которые были отправлены
+            $productsCount = $isSuccess ? $ws->products()->count() : 0;
+
+            // Если ошибка, берем текст ошибки, который метод sync() сохранил в модель
+            $errorMessage = $isSuccess ? null : ($webhook->last_error ?? 'Неизвестная ошибка синхронизации');
 
             $results[] = [
                 'workspace_id' => $ws->id,
                 'workspace_name' => $ws->name,
-                'success' => $syncResult['success'],
-                'products_synced' => $syncResult['products_synced'],
-                'error' => $syncResult['error'],
+                'success' => $isSuccess,
+                'products_synced' => $productsCount,
+                'error' => $errorMessage,
             ];
         }
 

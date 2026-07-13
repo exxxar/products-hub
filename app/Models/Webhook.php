@@ -30,100 +30,6 @@ class Webhook extends Model
     }
 
     /**
-     * Реальная синхронизация товаров через вебхук
-     */
-    public function syncProducts(): array
-    {
-        try {
-            $workspace = $this->workspace;
-
-            // 1. Собираем данные для отправки (адаптируйте под структуру вашего внешнего API)
-            $products = $workspace->products()
-                ->with(['categories:id,name', 'attributes:name,value'])
-                ->get()
-                ->map(function ($product) {
-                    return [
-                        'id' => $product->id,
-                        'sku' => $product->sku,
-                        'name' => $product->name,
-                        'price' => (float)$product->price,
-                        'old_price' => $product->old_price ? (float)$product->old_price : null,
-                        'is_active' => (bool)$product->is_active,
-                        'in_stop_list' => (bool)$product->in_stop_list,
-                        'categories' => $product->categories->pluck('name')->toArray(),
-                    ];
-                });
-
-            $payload = [
-                'workspace_uuid' => $workspace->uuid,
-                'workspace_name' => $workspace->name,
-                'action' => 'full_sync',
-                'timestamp' => now()->toIso8601String(),
-                'data' => [
-                    'products' => $products->toArray(),
-                    'total_count' => $products->count(),
-                ]
-            ];
-
-            // 2. Делаем HTTP запрос
-            $response = Http::timeout(30) // Таймаут 30 секунд
-            ->withHeaders([
-
-                'User-Agent' => 'Workspace-Aggregator/1.0',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-                'X-Webhook-Source' => 'workspace-platform',
-                'X-Webhook-Event' =>  'product.updated' ,
-                'X-Webhook-Timestamp' => now()->toISOString()
-            ])
-                ->post($this->url, $payload);
-
-            // 3. Обрабатываем ответ
-            if ($response->successful()) {
-                $this->update([
-                    'last_synced_at' => now(),
-                    'last_status' => 'success'
-                ]);
-
-                return [
-                    'success' => true,
-                    'products_synced' => $products->count(),
-                    'error' => null,
-                ];
-            } else {
-                $this->update(['last_status' => 'failed']);
-
-                $errorMsg = "HTTP {$response->status()}: " . mb_substr($response->body(), 0, 100);
-
-                return [
-                    'success' => false,
-                    'products_synced' => 0,
-                    'error' => $errorMsg,
-                ];
-            }
-
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            $this->update(['last_status' => 'connection_error']);
-            Log::error("Webhook Connection Error: {$this->url}", ['error' => $e->getMessage()]);
-
-            return [
-                'success' => false,
-                'products_synced' => 0,
-                'error' => 'Ошибка соединения (проверьте URL и доступность сервера)',
-            ];
-        } catch (\Exception $e) {
-            $this->update(['last_status' => 'error']);
-            Log::error("Webhook Sync Error: {$this->url}", ['error' => $e->getMessage()]);
-
-            return [
-                'success' => false,
-                'products_synced' => 0,
-                'error' => 'Внутренняя ошибка: ' . $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
      * Отправить синхронизацию
      */
     public function sync($product = null)
@@ -135,7 +41,6 @@ class Webhook extends Model
                 'webhook_id' => $this->id,
                 'url' => $this->url,
                 'event' => $product ? 'product.updated' : 'workspace.sync',
-                'payload_size' => strlen(json_encode($payload))
             ]);
 
             $response = Http::timeout(30)
@@ -155,26 +60,21 @@ class Webhook extends Model
                     'last_error' => null
                 ]);
 
-                Log::info('Webhook sent successfully', [
-                    'webhook_id' => $this->id,
-                    'status_code' => $response->status(),
-                    'response_time' => $response->header('X-Response-Time')
-                ]);
-
                 return true;
             } else {
-                $errorMessage = "HTTP {$response->status()}: " . Str::limit($response->body(), 200);
+                // ✅ ИСПРАВЛЕНИЕ 1: Убрали Str::limit, чтобы видеть ПОЛНУЮ ошибку от принимающего сервера
+                $errorMessage = "HTTP {$response->status()}: " . $response->body();
 
                 $this->update([
                     'last_status' => 'failed',
-                    'last_error' => $errorMessage
+                    'last_error' => Str::limit($errorMessage, 500) // Обрезаем только при сохранении в БД, чтобы не раздуть таблицу
                 ]);
 
                 Log::error('Webhook sync failed', [
                     'webhook_id' => $this->id,
                     'url' => $this->url,
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'full_response_body' => $response->body() // ✅ Логируем полный ответ для отладки
                 ]);
 
                 return false;
@@ -191,7 +91,6 @@ class Webhook extends Model
                 'webhook_id' => $this->id,
                 'url' => $this->url,
                 'error' => $errorMessage,
-                'trace' => $e->getTraceAsString()
             ]);
 
             return false;
@@ -200,9 +99,7 @@ class Webhook extends Model
 
     /**
      * Сформировать payload для вебхука
-     */
-    /**
-     * Сформировать payload для вебхука
+     * ✅ ИСПРАВЛЕНИЕ 2: Более плоская и стандартная структура, которую принимают большинство API
      */
     protected function buildPayload($product = null)
     {
@@ -210,30 +107,27 @@ class Webhook extends Model
             $workspace = $this->workspace;
 
             if ($product) {
-                // Загружаем отношения если не загружены
                 $product->loadMissing(['categories', 'attributes', 'ingredients']);
 
                 return [
                     'event' => 'product.updated',
                     'timestamp' => now()->toISOString(),
-                    'workspace' => [
-                        'id' => $workspace->id,
-                        'uuid' => $workspace->uuid,
-                        'name' => $workspace->name
-                    ],
-                    'product' => $this->buildProductData($product),
+                    'workspace_id' => $workspace->id,          // ✅ Вынесли на верхний уровень
+                    'workspace_uuid' => $workspace->uuid,      // ✅ Вынесли на верхний уровень
+                    'data' => [                                // ✅ Сами данные теперь в ключе 'data'
+                        'product' => $this->buildProductData($product)
+                    ]
                 ];
             } else {
-                // Полная синхронизация
                 $workspace->loadMissing(['products.categories', 'products.attributes', 'products.ingredients']);
 
                 return [
                     'event' => 'workspace.sync',
                     'timestamp' => now()->toISOString(),
-                    'workspace' => [
-                        'id' => $workspace->id,
-                        'uuid' => $workspace->uuid,
-                        'name' => $workspace->name,
+                    'workspace_id' => $workspace->id,          // ✅ Вынесли на верхний уровень
+                    'workspace_uuid' => $workspace->uuid,      // ✅ Вынесли на верхний уровень
+                    'workspace_name' => $workspace->name,
+                    'data' => [                                // ✅ Сами данные теперь в ключе 'data'
                         'products' => collect($workspace->products ?? [])->map(function ($p) {
                             return $this->buildProductData($p);
                         })->values()->all()
@@ -244,24 +138,20 @@ class Webhook extends Model
             Log::error('Build payload error', [
                 'webhook_id' => $this->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
 
-            // Возвращаем минимальный payload в случае ошибки
             return [
                 'event' => $product ? 'product.updated' : 'workspace.sync',
                 'timestamp' => now()->toISOString(),
                 'error' => 'Failed to build complete payload',
-                'workspace' => [
-                    'id' => $this->workspace->id,
-                    'uuid' => $this->workspace->uuid,
-                ]
+                'workspace_id' => $this->workspace->id,
+                'workspace_uuid' => $this->workspace->uuid,
             ];
         }
     }
 
     /**
-     * ✅ Безопасное построение данных товара
+     * ✅ Безопасное построение данных товара (оставляем как было, оно отличное)
      */
     protected function buildProductData(Product $product): array
     {
@@ -269,48 +159,32 @@ class Webhook extends Model
             'id' => $product->id,
             'name' => $product->name,
             'sku' => $product->sku ?? '',
-            'price' => (float)($product->price ?? 0),
-            'old_price' => $product->old_price ? (float)$product->old_price : null,
+            'price' => (float) ($product->price ?? 0),
+            'old_price' => $product->old_price ? (float) $product->old_price : null,
             'description' => $product->description ?? '',
-            'is_active' => (bool)$product->is_active,
-            'in_stop_list' => (bool)$product->in_stop_list,
+            'is_active' => (bool) $product->is_active,
+            'in_stop_list' => (bool) $product->in_stop_list,
             'categories' => $this->safeMapRelation($product->categories ?? [], function ($c) {
-                return [
-                    'id' => $c->id ?? null,
-                    'name' => $c->name ?? '',
-                ];
+                return ['id' => $c->id ?? null, 'name' => $c->name ?? ''];
             }),
             'images' => $this->safeMapRelation($product->images ?? [], function ($img) {
                 if (is_array($img)) {
-                    return [
-                        'url' => $img['url'] ?? '',
-                        'name' => $img['name'] ?? '',
-                    ];
+                    return ['url' => $img['url'] ?? '', 'name' => $img['name'] ?? ''];
                 }
-                return [
-                    'url' => $img->url ?? '',
-                    'name' => $img->name ?? '',
-                ];
+                return ['url' => $img->url ?? '', 'name' => $img->name ?? ''];
             }),
             'attributes' => $this->safeMapRelation($product->attributes ?? [], function ($a) {
-                return [
-                    'name' => $a->name ?? '',
-                    'value' => $a->value ?? '',
-                ];
+                return ['name' => $a->name ?? '', 'value' => $a->value ?? ''];
             }),
             'ingredients' => $this->safeMapRelation($product->ingredients ?? [], function ($i) {
-                return [
-                    'id' => $i->id ?? null,
-                    'name' => $i->name ?? '',
-                ];
+                return ['id' => $i->id ?? null, 'name' => $i->name ?? ''];
             }),
             'updated_at' => $product->updated_at?->toISOString() ?? now()->toISOString(),
         ];
     }
 
     /**
-     * ✅ Безопасный map для отношений
-     * Обрабатывает: null, массив, коллекцию
+     * ✅ Безопасный map для отношений (оставляем как было)
      */
     protected function safeMapRelation($data, callable $callback): array
     {
@@ -320,15 +194,14 @@ class Webhook extends Model
 
         try {
             return collect($data)
-                ->filter() // убираем null
+                ->filter()
                 ->map($callback)
                 ->values()
                 ->all();
         } catch (\Throwable $e) {
-            Log::warning('Safe map relation failed', [
-                'error' => $e->getMessage(),
-            ]);
+            Log::warning('Safe map relation failed', ['error' => $e->getMessage()]);
             return [];
         }
     }
+
 }
