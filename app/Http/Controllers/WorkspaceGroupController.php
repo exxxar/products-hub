@@ -66,6 +66,50 @@ class WorkspaceGroupController extends Controller
     }
 
     /**
+     * Обновление группы и её состава
+     */
+    public function update(Request $request, WorkspaceGroup $group)
+    {
+        $workspace = App::make('workspace');
+
+        // 1. Проверка прав: текущий workspace должен быть участником этой группы
+        if ($group->workspaces()->where('workspaces.id', $workspace->id)->doesntExist()) {
+            abort(403, 'У вас нет прав на редактирование этой группы');
+        }
+
+        // 2. Валидация данных (аналогично store)
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'color' => 'nullable|string',
+            'workspace_ids' => 'required|array|min:2',
+            'workspace_ids.*' => 'integer'
+        ]);
+
+        // 3. Обновление основных полей группы
+        $group->update([
+            'name' => $validated['name'],
+            'color' => $validated['color'] ?? '#0d6efd',
+        ]);
+
+        // 4. Синхронизация состава группы
+        $workspaceIds = $validated['workspace_ids'];
+
+        // Гарантируем, что текущий workspace остается в группе (как в методе store)
+        if (!in_array($workspace->id, $workspaceIds)) {
+            $workspaceIds[] = $workspace->id;
+        }
+
+        // Используем sync для обновления связей (добавит новые, удалит лишние, обновит sort_order)
+        $group->workspaces()->sync(
+            collect($workspaceIds)->mapWithKeys(function ($id, $index) {
+                return [$id => ['sort_order' => $index]];
+            })->toArray()
+        );
+
+        // 5. Возвращаем обновленную группу с загруженными связями
+        return response()->json($group->load('workspaces'));
+    }
+    /**
      * Массовое обновление/создание вебхуков для досок в группе
      */
     public function updateWebhooks(Request $request, $workspaceUuid, WorkspaceGroup $group)
