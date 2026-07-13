@@ -46,10 +46,10 @@ class Webhook extends Model
                         'id' => $product->id,
                         'sku' => $product->sku,
                         'name' => $product->name,
-                        'price' => (float) $product->price,
-                        'old_price' => $product->old_price ? (float) $product->old_price : null,
-                        'is_active' => (bool) $product->is_active,
-                        'in_stop_list' => (bool) $product->in_stop_list,
+                        'price' => (float)$product->price,
+                        'old_price' => $product->old_price ? (float)$product->old_price : null,
+                        'is_active' => (bool)$product->is_active,
+                        'in_stop_list' => (bool)$product->in_stop_list,
                         'categories' => $product->categories->pluck('name')->toArray(),
                     ];
                 });
@@ -68,8 +68,13 @@ class Webhook extends Model
             // 2. Делаем HTTP запрос
             $response = Http::timeout(30) // Таймаут 30 секунд
             ->withHeaders([
+
+                'User-Agent' => 'Workspace-Aggregator/1.0',
+                'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
-                'User-Agent' => 'Workspace-Aggregator/1.0'
+                'X-Webhook-Source' => 'workspace-platform',
+                'X-Webhook-Event' =>  'product.updated' ,
+                'X-Webhook-Timestamp' => now()->toISOString()
             ])
                 ->post($this->url, $payload);
 
@@ -264,11 +269,11 @@ class Webhook extends Model
             'id' => $product->id,
             'name' => $product->name,
             'sku' => $product->sku ?? '',
-            'price' => (float) ($product->price ?? 0),
-            'old_price' => $product->old_price ? (float) $product->old_price : null,
+            'price' => (float)($product->price ?? 0),
+            'old_price' => $product->old_price ? (float)$product->old_price : null,
             'description' => $product->description ?? '',
-            'is_active' => (bool) $product->is_active,
-            'in_stop_list' => (bool) $product->in_stop_list,
+            'is_active' => (bool)$product->is_active,
+            'in_stop_list' => (bool)$product->in_stop_list,
             'categories' => $this->safeMapRelation($product->categories ?? [], function ($c) {
                 return [
                     'id' => $c->id ?? null,
