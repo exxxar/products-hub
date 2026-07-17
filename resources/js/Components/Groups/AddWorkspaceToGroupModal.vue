@@ -99,6 +99,7 @@
 
 <script>
 import { useWorkspaceStore } from '@/store/workspace.js'
+import axios from 'axios' // ✅ Добавляем axios
 
 export default {
     name: 'AddWorkspaceToGroupModal',
@@ -126,14 +127,12 @@ export default {
     },
 
     computed: {
-        // 1. Получаем все доски, которых ЕЩЁ НЕТ в этой группе
         availableWorkspaces() {
             if (!this.group) return []
             const currentIds = (this.group.workspaces || []).map(w => Number(w.id))
             return (this.store.allWorkspaces || []).filter(ws => !currentIds.includes(Number(ws.id)))
         },
 
-        // 2. Фильтруем их по поисковому запросу (как в вашем примере)
         filteredWorkspaces() {
             if (!this.searchQuery) return this.availableWorkspaces
 
@@ -146,17 +145,20 @@ export default {
     },
 
     watch: {
-        // Простой watch, как в примере GroupEditModal
-        modelValue(val) {
+        async modelValue(val) {
             if (val) {
                 this.selectedIds = []
                 this.searchQuery = ''
                 document.body.style.overflow = 'hidden'
 
-                // Если список вдруг пуст, можно безопасно вызвать загрузку,
-                // но computed свойства сами обновятся, когда store.allWorkspaces заполнится
+                // ✅ Надежная загрузка: если список пуст, грузим напрямую через axios
                 if (!this.store.allWorkspaces || this.store.allWorkspaces.length === 0) {
-                    this.store.loadAllWorkspaces()
+                    try {
+                        const response = await axios.get(`/api/workspaces/${this.store.uuid}/workspace/all`)
+                        this.store.allWorkspaces = response.data
+                    } catch (error) {
+                        console.error('Failed to load all workspaces:', error)
+                    }
                 }
             } else {
                 document.body.style.overflow = ''
@@ -177,7 +179,17 @@ export default {
                 const currentIds = (this.group.workspaces || []).map(w => Number(w.id))
                 const newIds = [...new Set([...currentIds, ...this.selectedIds])]
 
-                await this.store.updateGroupWorkspaces(this.group.id, newIds)
+                // ✅ Используем метод store, если он есть, или делаем запрос напрямую
+                if (typeof this.store.updateGroupWorkspaces === 'function') {
+                    await this.store.updateGroupWorkspaces(this.group.id, newIds)
+                } else {
+                    await axios.put(`/api/workspaces/${this.store.uuid}/workspace-groups/${this.group.id}/workspaces`, {
+                        workspace_ids: newIds
+                    })
+                    // Обновляем группы в сторе вручную
+                    await this.store.loadGroups?.()
+                }
+
                 this.$emit('added')
                 this.close()
             } catch (e) {
