@@ -19,7 +19,7 @@ class WorkspaceGroupController extends Controller
         return response()->json($groups);
     }
 
-    public function updateWorkspaces(Request $request, WorkspaceGroup $group)
+    public function updateWorkspaces(Request $request,$workspaceUuid, WorkspaceGroup $group)
     {
         $workspace = App::make('workspace');
 
