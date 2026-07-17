@@ -30,7 +30,7 @@
                             </div>
                         </div>
 
-                        <!-- Поиск -->
+                        <!-- Поиск (с исправленными стилями) -->
                         <div class="search-box">
                             <i class="fa-solid fa-magnifying-glass"></i>
                             <input
@@ -41,14 +41,8 @@
                             />
                         </div>
 
-                        <!-- ✅ Состояние загрузки -->
-                        <div v-if="isLoading" class="loading-state">
-                            <i class="fa-solid fa-circle-notch fa-spin"></i>
-                            <span>Загрузка списка досок...</span>
-                        </div>
-
-                        <!-- Список доступных досок -->
-                        <div v-else class="workspace-list">
+                        <!-- Список доступных досок (реактивно из computed) -->
+                        <div class="workspace-list">
                             <label
                                 v-for="ws in filteredWorkspaces"
                                 :key="ws.id"
@@ -71,8 +65,8 @@
                             <!-- Пустое состояние -->
                             <div v-if="filteredWorkspaces.length === 0" class="empty-state">
                                 <i class="fa-solid fa-inbox"></i>
-                                <p v-if="searchQuery">Ничего не найдено по запросу</p>
-                                <p v-else>Все доступные доски уже добавлены в эту группу</p>
+                                <p v-if="searchQuery">Ничего не найдено</p>
+                                <p v-else>Все доступные доски уже в этой группе</p>
                             </div>
                         </div>
 
@@ -110,8 +104,14 @@ export default {
     name: 'AddWorkspaceToGroupModal',
 
     props: {
-        modelValue: { type: Boolean, default: false },
-        group: { type: Object, default: null }
+        modelValue: {
+            type: Boolean,
+            default: false
+        },
+        group: {
+            type: Object,
+            default: null
+        }
     },
 
     emits: ['update:modelValue', 'added'],
@@ -120,22 +120,23 @@ export default {
         return {
             store: useWorkspaceStore(),
             isSaving: false,
-            isLoading: false, // ✅ Добавили состояние загрузки
             searchQuery: '',
             selectedIds: []
         }
     },
 
     computed: {
+        // 1. Получаем все доски, которых ЕЩЁ НЕТ в этой группе
         availableWorkspaces() {
             if (!this.group) return []
-            const currentIds = (this.group.workspaces || []).map(w => w.id)
-            // ✅ Приводим к числу для надежного сравнения (на случай если типы разные)
+            const currentIds = (this.group.workspaces || []).map(w => Number(w.id))
             return (this.store.allWorkspaces || []).filter(ws => !currentIds.includes(Number(ws.id)))
         },
 
+        // 2. Фильтруем их по поисковому запросу (как в вашем примере)
         filteredWorkspaces() {
             if (!this.searchQuery) return this.availableWorkspaces
+
             const q = this.searchQuery.toLowerCase()
             return this.availableWorkspaces.filter(ws =>
                 ws.name?.toLowerCase().includes(q) ||
@@ -145,20 +146,18 @@ export default {
     },
 
     watch: {
-        // ✅ Делаем watcher асинхронным, чтобы дождаться загрузки данных
-        async modelValue(val) {
+        // Простой watch, как в примере GroupEditModal
+        modelValue(val) {
             if (val) {
                 this.selectedIds = []
                 this.searchQuery = ''
-                this.isLoading = true
                 document.body.style.overflow = 'hidden'
 
-                // Ждем завершения загрузки, если список пуст
+                // Если список вдруг пуст, можно безопасно вызвать загрузку,
+                // но computed свойства сами обновятся, когда store.allWorkspaces заполнится
                 if (!this.store.allWorkspaces || this.store.allWorkspaces.length === 0) {
-                    await this.store.loadAllWorkspaces()
+                    this.store.loadAllWorkspaces()
                 }
-
-                this.isLoading = false
             } else {
                 document.body.style.overflow = ''
             }
@@ -175,7 +174,7 @@ export default {
 
             this.isSaving = true
             try {
-                const currentIds = (this.group.workspaces || []).map(w => w.id)
+                const currentIds = (this.group.workspaces || []).map(w => Number(w.id))
                 const newIds = [...new Set([...currentIds, ...this.selectedIds])]
 
                 await this.store.updateGroupWorkspaces(this.group.id, newIds)
@@ -206,8 +205,7 @@ export default {
 </script>
 
 <style scoped>
-/* ... (оставьте стили modal-overlay, modal-content-custom, header, footer из предыдущего варианта) ... */
-
+/* === Overlay & Modal Base === */
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -237,6 +235,7 @@ export default {
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* === Header === */
 .modal-header-custom {
     display: flex;
     align-items: center;
@@ -263,6 +262,7 @@ export default {
 }
 .btn-close-custom:hover { background: #e9ecef; color: #212529; }
 
+/* === Body === */
 .modal-body-custom {
     flex: 1;
     overflow-y: auto;
@@ -273,15 +273,17 @@ export default {
     display: flex; align-items: center; gap: 12px;
     padding: 12px; background: #f8f9fa; border-radius: 10px; margin-bottom: 16px;
 }
+
 .group-icon {
     width: 40px; height: 40px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 14px; flex-shrink: 0;
 }
+
 .group-name { font-size: 15px; font-weight: 600; color: #212529; }
 .group-meta { font-size: 12px; color: #6c757d; margin-top: 2px; }
 
-/* === ✅ ИСПРАВЛЕНИЕ ИНПУТА === */
+/* === ✅ ИСПРАВЛЕННЫЙ ИНПУТ ПОИСКА === */
 .search-box {
     position: relative;
     margin-bottom: 16px;
@@ -289,20 +291,20 @@ export default {
 
 .search-box > i {
     position: absolute;
-    left: 14px; /* Сдвинули чуть правее для идеального центра */
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: #adb5bd;
-    font-size: 14px; /* Чуть крупнее */
-    pointer-events: none; /* Чтобы клик по иконке не мешал вводу */
+    font-size: 14px;
+    pointer-events: none;
     z-index: 2;
 }
 
 .search-input {
     width: 100%;
-    height: 42px; /* ✅ Явная высота для идеального центрирования иконки */
-    padding: 0 12px 0 38px !important; /* ✅ Отступ слева = 14px (иконка) + 12px (gap) + 12px (padding) */
-    box-sizing: border-box; /* ✅ Критически важно, чтобы padding не ломал ширину */
+    height: 42px; /* Явная высота для идеального центрирования */
+    padding: 0 12px 0 38px !important; /* Отступ слева под иконку */
+    box-sizing: border-box; /* Критически важно для сохранения размеров */
     border: 1px solid #dee2e6;
     border-radius: 8px;
     font-size: 14px;
@@ -313,21 +315,6 @@ export default {
 .search-input:focus {
     border-color: #0d6efd;
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
-}
-
-/* === ✅ СОСТОЯНИЕ ЗАГРУЗКИ === */
-.loading-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 20px;
-    color: #6c757d;
-    gap: 12px;
-}
-.loading-state i {
-    font-size: 24px;
-    color: #0d6efd;
 }
 
 /* === Workspace List === */
@@ -378,6 +365,7 @@ export default {
     padding: 14px 20px; border-top: 1px solid #e9ecef;
     display: flex; justify-content: flex-end; gap: 8px;
 }
+
 .btn-cancel {
     padding: 8px 16px; border: 1px solid #dee2e6; border-radius: 8px;
     background: #fff; color: #6c757d; cursor: pointer;
@@ -392,10 +380,11 @@ export default {
 .btn-save:hover:not(:disabled) { background: #157347; }
 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Transitions */
+/* === Transitions === */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
+/* === Responsive === */
 @media (max-width: 576px) {
     .modal-overlay { padding: 0; }
     .modal-content-custom { max-width: 100%; max-height: 100%; border-radius: 0; }
