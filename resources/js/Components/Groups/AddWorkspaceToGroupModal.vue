@@ -41,8 +41,14 @@
                             />
                         </div>
 
+                        <!-- ✅ Состояние загрузки -->
+                        <div v-if="isLoading" class="loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            <span>Загрузка списка досок...</span>
+                        </div>
+
                         <!-- Список доступных досок -->
-                        <div class="workspace-list">
+                        <div v-else class="workspace-list">
                             <label
                                 v-for="ws in filteredWorkspaces"
                                 :key="ws.id"
@@ -65,8 +71,8 @@
                             <!-- Пустое состояние -->
                             <div v-if="filteredWorkspaces.length === 0" class="empty-state">
                                 <i class="fa-solid fa-inbox"></i>
-                                <p v-if="searchQuery">Ничего не найдено</p>
-                                <p v-else>Все доски уже в этой группе</p>
+                                <p v-if="searchQuery">Ничего не найдено по запросу</p>
+                                <p v-else>Все доступные доски уже добавлены в эту группу</p>
                             </div>
                         </div>
 
@@ -104,14 +110,8 @@ export default {
     name: 'AddWorkspaceToGroupModal',
 
     props: {
-        modelValue: {
-            type: Boolean,
-            default: false
-        },
-        group: {
-            type: Object,
-            default: null
-        }
+        modelValue: { type: Boolean, default: false },
+        group: { type: Object, default: null }
     },
 
     emits: ['update:modelValue', 'added'],
@@ -120,17 +120,18 @@ export default {
         return {
             store: useWorkspaceStore(),
             isSaving: false,
+            isLoading: false, // ✅ Добавили состояние загрузки
             searchQuery: '',
             selectedIds: []
         }
     },
 
     computed: {
-        // Все workspace, которых ещё нет в группе
         availableWorkspaces() {
             if (!this.group) return []
             const currentIds = (this.group.workspaces || []).map(w => w.id)
-            return (this.store.allWorkspaces || []).filter(ws => !currentIds.includes(ws.id))
+            // ✅ Приводим к числу для надежного сравнения (на случай если типы разные)
+            return (this.store.allWorkspaces || []).filter(ws => !currentIds.includes(Number(ws.id)))
         },
 
         filteredWorkspaces() {
@@ -144,15 +145,20 @@ export default {
     },
 
     watch: {
-        modelValue(val) {
+        // ✅ Делаем watcher асинхронным, чтобы дождаться загрузки данных
+        async modelValue(val) {
             if (val) {
                 this.selectedIds = []
                 this.searchQuery = ''
+                this.isLoading = true
                 document.body.style.overflow = 'hidden'
-                // Загружаем все workspace если ещё не загружены
-                if (!this.store.allWorkspaces?.length) {
-                    this.store.loadAllWorkspaces?.()
+
+                // Ждем завершения загрузки, если список пуст
+                if (!this.store.allWorkspaces || this.store.allWorkspaces.length === 0) {
+                    await this.store.loadAllWorkspaces()
                 }
+
+                this.isLoading = false
             } else {
                 document.body.style.overflow = ''
             }
@@ -168,9 +174,7 @@ export default {
             if (this.selectedIds.length === 0 || this.isSaving) return
 
             this.isSaving = true
-
             try {
-                // Объединяем текущие + новые
                 const currentIds = (this.group.workspaces || []).map(w => w.id)
                 const newIds = [...new Set([...currentIds, ...this.selectedIds])]
 
@@ -202,6 +206,8 @@ export default {
 </script>
 
 <style scoped>
+/* ... (оставьте стили modal-overlay, modal-content-custom, header, footer из предыдущего варианта) ... */
+
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -248,27 +254,14 @@ export default {
     margin: 0;
 }
 
-.modal-title-custom i {
-    color: #198754;
-}
+.modal-title-custom i { color: #198754; }
 
 .btn-close-custom {
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 8px;
-    background: #f1f3f5;
-    color: #6c757d;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 32px; height: 32px; border: none; border-radius: 8px;
+    background: #f1f3f5; color: #6c757d; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
 }
-
-.btn-close-custom:hover {
-    background: #e9ecef;
-    color: #212529;
-}
+.btn-close-custom:hover { background: #e9ecef; color: #212529; }
 
 .modal-body-custom {
     flex: 1;
@@ -276,58 +269,65 @@ export default {
     padding: 20px;
 }
 
-/* === Group Info Header === */
 .group-info-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 10px;
-    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; background: #f8f9fa; border-radius: 10px; margin-bottom: 16px;
 }
-
 .group-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 14px;
-    flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px; flex-shrink: 0;
 }
+.group-name { font-size: 15px; font-weight: 600; color: #212529; }
+.group-meta { font-size: 12px; color: #6c757d; margin-top: 2px; }
 
-.group-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #212529;
-}
-
-.group-meta {
-    font-size: 12px;
-    color: #6c757d;
-    margin-top: 2px;
-}
-
-/* === Search === */
+/* === ✅ ИСПРАВЛЕНИЕ ИНПУТА === */
 .search-box {
     position: relative;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 
 .search-box > i {
     position: absolute;
-    left: 12px;
+    left: 14px; /* Сдвинули чуть правее для идеального центра */
     top: 50%;
     transform: translateY(-50%);
     color: #adb5bd;
-    font-size: 12px;
+    font-size: 14px; /* Чуть крупнее */
+    pointer-events: none; /* Чтобы клик по иконке не мешал вводу */
+    z-index: 2;
 }
 
 .search-input {
-    padding-left: 34px !important;
+    width: 100%;
+    height: 42px; /* ✅ Явная высота для идеального центрирования иконки */
+    padding: 0 12px 0 38px !important; /* ✅ Отступ слева = 14px (иконка) + 12px (gap) + 12px (padding) */
+    box-sizing: border-box; /* ✅ Критически важно, чтобы padding не ломал ширину */
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+.search-input:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+/* === ✅ СОСТОЯНИЕ ЗАГРУЗКИ === */
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #6c757d;
+    gap: 12px;
+}
+.loading-state i {
+    font-size: 24px;
+    color: #0d6efd;
 }
 
 /* === Workspace List === */
@@ -340,159 +340,64 @@ export default {
 }
 
 .ws-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px;
-    border-radius: 6px;
-    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px; border-radius: 6px; cursor: pointer;
 }
-
-.ws-checkbox:hover {
-    background: #f8f9fa;
-}
-
-.ws-checkbox input {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
+.ws-checkbox:hover { background: #f8f9fa; }
+.ws-checkbox input { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
 
 .ws-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    flex-shrink: 0;
+    width: 32px; height: 32px; border-radius: 6px; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
 }
 
-.ws-info {
-    flex: 1;
-    min-width: 0;
-}
-
+.ws-info { flex: 1; min-width: 0; }
 .ws-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: #212529;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 13px; font-weight: 500; color: #212529;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
-.ws-label {
-    font-size: 11px;
-    color: #6c757d;
-    margin-top: 1px;
-}
+.ws-label { font-size: 11px; color: #6c757d; margin-top: 1px; }
 
 /* === Empty State === */
 .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 30px 20px;
-    text-align: center;
-    color: #adb5bd;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 30px 20px; text-align: center; color: #adb5bd;
 }
-
-.empty-state i {
-    font-size: 32px;
-    margin-bottom: 8px;
-    opacity: 0.5;
-}
-
-.empty-state p {
-    margin: 0;
-    font-size: 13px;
-    color: #6c757d;
-}
+.empty-state i { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+.empty-state p { margin: 0; font-size: 13px; color: #6c757d; }
 
 .field-hint {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 10px;
-    font-size: 12px;
-    color: #0d6efd;
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 10px; font-size: 12px; color: #0d6efd;
 }
-
-.field-hint i {
-    font-size: 11px;
-}
+.field-hint i { font-size: 11px; }
 
 /* === Footer === */
 .modal-footer-custom {
-    padding: 14px 20px;
-    border-top: 1px solid #e9ecef;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+    padding: 14px 20px; border-top: 1px solid #e9ecef;
+    display: flex; justify-content: flex-end; gap: 8px;
 }
-
 .btn-cancel {
-    padding: 8px 16px;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    background: #fff;
-    color: #6c757d;
-    cursor: pointer;
+    padding: 8px 16px; border: 1px solid #dee2e6; border-radius: 8px;
+    background: #fff; color: #6c757d; cursor: pointer;
 }
-
-.btn-cancel:hover {
-    background: #f8f9fa;
-}
+.btn-cancel:hover { background: #f8f9fa; }
 
 .btn-save {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 20px;
-    border: none;
-    border-radius: 8px;
-    background: #198754;
-    color: #fff;
-    font-weight: 500;
-    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 20px; border: none; border-radius: 8px;
+    background: #198754; color: #fff; font-weight: 500; cursor: pointer;
 }
-
-.btn-save:hover:not(:disabled) {
-    background: #157347;
-}
-
-.btn-save:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
+.btn-save:hover:not(:disabled) { background: #157347; }
+.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Transitions */
-.modal-enter-active,
-.modal-leave-active {
-    transition: opacity 0.2s ease;
-}
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
 
-.modal-enter-from,
-.modal-leave-to {
-    opacity: 0;
-}
-
-/* Responsive */
 @media (max-width: 576px) {
-    .modal-overlay {
-        padding: 0;
-    }
-
-    .modal-content-custom {
-        max-width: 100%;
-        max-height: 100%;
-        border-radius: 0;
-    }
+    .modal-overlay { padding: 0; }
+    .modal-content-custom { max-width: 100%; max-height: 100%; border-radius: 0; }
 }
 </style>
