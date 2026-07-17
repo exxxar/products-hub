@@ -34,7 +34,7 @@ class WorkspaceGroupController extends Controller
         ]);
 
         // Синхронизируем состав группы
-        $group->syncWorkspaces($validated['workspace_ids']);
+        $group->addWorkspaces($validated['workspace_ids']);
 
         return response()->json($group->load('workspaces:id,name,uuid,color,label'));
     }
