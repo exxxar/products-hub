@@ -21,6 +21,11 @@ class WorkspaceGroup extends Model
             ->orderBy('workspace_group_members.sort_order');
     }
 
+    public function syncWorkspaces(array $workspaceIds)
+    {
+        $this->workspaces()->sync($workspaceIds);
+    }
+
     public function addWorkspaces(array $workspaceIds)
     {
         $current = $this->workspaces()->pluck('workspaces.id')->toArray();

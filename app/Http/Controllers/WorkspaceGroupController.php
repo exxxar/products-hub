@@ -34,7 +34,7 @@ class WorkspaceGroupController extends Controller
         ]);
 
         // Синхронизируем состав группы
-        $group->addWorkspaces($validated['workspace_ids']);
+        $group->syncWorkspaces($validated['workspace_ids']);
 
         return response()->json($group->load('workspaces:id,name,uuid,color,label'));
     }
@@ -258,7 +258,7 @@ class WorkspaceGroupController extends Controller
     /**
      * Удаление группы
      */
-    public function destroy($workspaceUuid, WorkspaceGroup $group)
+    public function destroy(Request $request, $workspaceUuid, WorkspaceGroup $group)
     {
         $workspace = App::make('workspace');
 

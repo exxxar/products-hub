@@ -48,7 +48,7 @@
                                     <i class="fa-solid fa-layer-group"></i>
                                 </div>
                                 <div class="group-info">
-                                    <div class="group-name">{{ group.name }}</div>
+                                    <div class="group-name">{{ group.name }} </div>
                                     <div class="group-meta">
                                         {{ group.workspaces?.length || 0 }}
                                         {{ pluralize(group.workspaces?.length || 0, 'доска', 'доски', 'досок') }}
@@ -99,7 +99,7 @@
                                 </div>
                                 <div class="workspaces-list">
                                     <div
-                                        v-for="ws in store.currentGroup.workspaces"
+                                        v-for="ws in currentGroup.workspaces"
                                         :key="ws.id"
                                         class="ws-item"
                                         :class="{ 'is-current': ws.id === currentWorkspaceId }"
@@ -108,7 +108,7 @@
                                             {{ ws.initials || ws.name?.substring(0, 2) }}
                                         </div>
                                         <div class="ws-info">
-                                            <div class="ws-name">{{ ws.name }}</div>
+                                            <div class="ws-name">{{ ws.name }} ({{ws.id}})</div>
                                             <div class="ws-label" v-if="ws.label">{{ ws.label }}</div>
                                         </div>
                                         <div class="ws-actions">
@@ -288,6 +288,9 @@ export default {
         },
         currentWorkspaceId() {
             return this.store.currentWorkspace?.id
+        },
+        currentGroup(){
+            return this.store.currentGroup || []
         }
     },
 
@@ -321,11 +324,11 @@ export default {
         // === Удаление доски из группы ===
         async removeFromGroup(workspace) {
             try {
-                const newIds = this.store.currentGroup.workspaces
+                const newIds = this.currentGroup.workspaces
                     .filter(w => w.id !== workspace.id)
                     .map(w => w.id)
 
-                await this.store.updateGroupWorkspaces(this.store.currentGroup.id, newIds)
+                await this.store.updateGroupWorkspaces(this.currentGroup.id, newIds)
                 this.$notify?.success(`«${workspace.name}» удалена из группы`)
             } catch (e) {
                 this.$notify?.error('Ошибка при удалении')
