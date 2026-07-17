@@ -127,21 +127,15 @@ export default {
     },
 
     computed: {
-        availableWorkspaces() {
-            if (!this.group) return []
-            const currentIds = (this.group.workspaces || []).map(w => Number(w.id))
-            return (this.store.allWorkspaces || []).filter(ws => !currentIds.includes(Number(ws.id)))
-        },
 
         filteredWorkspaces() {
-            if (!this.searchQuery) return this.availableWorkspaces
-
+            if (!this.searchQuery) return this.store.linkedWorkspaces
             const q = this.searchQuery.toLowerCase()
-            return this.availableWorkspaces.filter(ws =>
-                ws.name?.toLowerCase().includes(q) ||
-                ws.label?.toLowerCase().includes(q)
+            return this.store.linkedWorkspaces.filter(w =>
+                w.name.toLowerCase().includes(q) ||
+                w.label?.toLowerCase().includes(q)
             )
-        }
+        },
     },
 
     watch: {
@@ -154,7 +148,7 @@ export default {
                 // ✅ Надежная загрузка: если список пуст, грузим напрямую через axios
                 if (!this.store.allWorkspaces || this.store.allWorkspaces.length === 0) {
                     try {
-                        const response = await axios.get(`/api/workspaces/${this.store.uuid}/workspace/all`)
+                        const response = await axios.get(`/api/workspaces/${this.store.uuid}/workspace/linked`)
                         this.store.allWorkspaces = response.data
                     } catch (error) {
                         console.error('Failed to load all workspaces:', error)
