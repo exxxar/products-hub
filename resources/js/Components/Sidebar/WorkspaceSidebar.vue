@@ -7,7 +7,7 @@
                     type="button"
                     class="segment-btn"
                     :class="{ active: activeTab === 'categories' }"
-                    @click="activeTab = 'categories'"
+                    @click="switchToCategory"
                 >
                     <i class="fa-solid fa-tags"></i>
                     <span class="segment-label">Категории</span>
@@ -17,7 +17,7 @@
                     type="button"
                     class="segment-btn"
                     :class="{ active: activeTab === 'collections' }"
-                    @click="activeTab = 'collections'"
+                    @click="switchToCollection"
                 >
                     <i class="fa-solid fa-box-open"></i>
                     <span class="segment-label">Коллекции</span>
@@ -60,9 +60,10 @@
                 >
                     <!-- Изображение -->
                     <div class="card-image">
+
                         <img
-                            v-if="collection.images && collection.images.length > 0"
-                            :src="collection.images[0].url"
+                            v-if="collection.image_url "
+                            :src="collection.image_url"
                             :alt="collection.name"
                         />
                         <div v-else class="image-placeholder">
@@ -301,7 +302,7 @@
 </template>
 
 <script>
-import { useWorkspaceStore } from '@/store/workspace.js'
+import {useWorkspaceStore} from '@/store/workspace.js'
 import CollectionFormModal from '@/Components/Collections/CollectionFormModal.vue'
 
 export default {
@@ -315,6 +316,8 @@ export default {
         'select-collection',
         'select-category',
         'create-category',
+        'switch-to-collection',
+        'switch-to-category',
         'edit-category'
     ],
 
@@ -384,7 +387,14 @@ export default {
             this.collectionToDelete = collection
             this.showDeleteCollectionModal = true
         },
-
+        switchToCategory() {
+            this.activeTab = 'categories'
+            this.$emit("switch-to-category")
+        },
+        switchToCollection() {
+            this.activeTab = "collections"
+            this.$emit("switch-to-collection")
+        },
         async deleteCollection() {
             if (!this.collectionToDelete) return
 
@@ -976,8 +986,12 @@ export default {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .modal-content {

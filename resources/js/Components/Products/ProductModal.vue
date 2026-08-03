@@ -118,7 +118,7 @@ export default {
             }
         },
 
-        prepareForm() {
+        prepareForm(defaultCategoryId = null) {
             if (this.product) {
                 this.form = {
                     id: this.product.id,
@@ -144,13 +144,18 @@ export default {
                 }
             } else {
                 this.form = this.getEmptyForm()
+
+                // ✅ Если передана категория по умолчанию, добавляем её в форму
+                if (defaultCategoryId) {
+                    this.form.categories.push(defaultCategoryId)
+                }
             }
         },
 
-        show() {
+        show(defaultCategoryId = null) {
             this.isLoading = true
             this.$nextTick(() => {
-                this.prepareForm()
+                this.prepareForm(defaultCategoryId) // Передаем дальше
                 this.isLoading = false
                 if (this.modal) {
                     this.modal.show()

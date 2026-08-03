@@ -47,6 +47,11 @@
                                     </a>
                                 </li>
                                 <li>
+                                    <a class="dropdown-item" href="#" @click.prevent="$emit('change-view', 'collections')">
+                                        <i class="fa-solid fa-boxes-stacked me-2"></i> Коллекции
+                                    </a>
+                                </li>
+                                <li>
                                     <a class="dropdown-item" href="#" @click.prevent="$emit('change-view', 'categories')">
                                         <i class="fa-solid fa-list me-2"></i> По категориям
                                     </a>

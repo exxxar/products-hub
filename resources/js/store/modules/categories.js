@@ -117,39 +117,7 @@ export default {
             }
         },
 
-        async loadProductsByCategoryId(categoryId, options = {}) {
-            try {
-                const params = new URLSearchParams()
 
-                if (options.paginate) {
-                    params.append('paginate', 'true')
-                    params.append('per_page', options.perPage || 50)
-                }
-                if (options.page) params.append('page', options.page)
-                if (options.search) params.append('search', options.search)
-                if (options.isActive !== undefined) {
-                    params.append('is_active', options.isActive ? '1' : '0')
-                }
-
-                const queryString = params.toString()
-                const url = `/api/workspaces/${this.uuid}/categories/${categoryId}/products` +
-                    (queryString ? `?${queryString}` : '')
-
-                const response = await axios.get(url)
-
-                if (options.paginate) {
-                    return {
-                        products: response.data.data,
-                        pagination: response.data.pagination
-                    }
-                }
-
-                return response.data
-            } catch (error) {
-                console.error('Load products by category failed:', error)
-                throw error
-            }
-        },
 
         async selectCategoryWithProducts(category) {
             if (!category) {

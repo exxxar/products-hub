@@ -168,9 +168,8 @@ Route::prefix('workspaces/{uuid}')
             Route::put('/{collection}', [CollectionController::class, 'update'])->middleware('master.unlocked');
             Route::delete('/{collection}', [CollectionController::class, 'destroy'])->middleware('master.unlocked');
 
-            Route::post('/{collection}/products', [CollectionController::class, 'addProducts'])->middleware('master.unlocked');
-            Route::delete('/{collection}/products', [CollectionController::class, 'removeProducts'])->middleware('master.unlocked');
-            Route::put('/{collection}/reorder', [CollectionController::class, 'reorderProducts'])->middleware('master.unlocked');
+            Route::post('/{collection}/image', [CollectionController::class, 'uploadImage'])->middleware('master.unlocked');
+            Route::delete('/{collection}/image', [CollectionController::class, 'removeImage'])->middleware('master.unlocked');
         });
 
         Route::prefix('token')->group(function () {

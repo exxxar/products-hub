@@ -27,7 +27,7 @@
                         @toggle-select="$emit('toggle-select', $event)"
                         @edit-product="$emit('edit-product', $event)"
                         @edit-images="$emit('edit-images', $event)"
-                        @toggle-stop-list="handleToggleStopList"
+                        @toggle-stop-list="$emit('toggle-stop-list', $event)"
                     />
                 </div>
             </template>
@@ -107,7 +107,7 @@ export default {
         }
     },
 
-    emits: ['toggle-select', 'edit-product', 'edit-images', 'create-product'],
+    emits: ['toggle-select', 'edit-product', 'edit-images', 'create-product','toggle-stop-list'],
 
     data() {
         return {
@@ -124,20 +124,7 @@ export default {
             return this.selectedIds.includes(productId)
         },
 
-        async handleToggleStopList(productId) {
-            try {
-                const result = await this.store.toggleProductStopList(productId)
 
-                if (result.success) {
-                    this.$notify?.success({
-                        title: result.in_stop_list ? 'Добавлено в стоп-лист' : 'Убрано из стоп-листа',
-                        message: result.in_stop_list ? 'Товар скрыт из меню' : 'Товар снова активен'
-                    })
-                }
-            } catch (error) {
-                this.$notify?.error('Ошибка при изменении статуса')
-            }
-        }
     },
 
     computed: {

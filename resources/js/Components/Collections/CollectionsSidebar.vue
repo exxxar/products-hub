@@ -88,6 +88,7 @@
             >
                 <!-- Изображение -->
                 <div class="card-image">
+
                     <img
                         v-if="collection.images && collection.images.length > 0"
                         :src="collection.images[0].url"

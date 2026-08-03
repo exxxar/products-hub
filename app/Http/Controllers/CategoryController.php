@@ -14,8 +14,9 @@ class CategoryController extends Controller
         $workspace = App::make('workspace');
 
         $categories = $workspace->categories()
-            ->withCount('products') // Теперь работает правильно
-            ->orderBy('name')
+            ->withCount('products')
+            ->orderByDesc('products_count')   // 🔥 сортируем по убыванию кол-ва товаров
+            ->orderBy('name')                  // при равенстве — по алфавиту
             ->get();
 
         return response()->json($categories);
@@ -230,13 +231,10 @@ class CategoryController extends Controller
         return response()->json($category);
     }
 
-    public function products( Request $request, $workspaceUuid, $categoryId)
+    public function products(Request $request, $workspaceUuid, $categoryId)
     {
         $workspace = App::make('workspace');
-
         $category = $workspace->categories()->findOrFail($categoryId);
-
-        // Опциональная пагинация
         $perPage = $request->input('per_page', 50);
 
         $query = $category->products()
@@ -244,7 +242,6 @@ class CategoryController extends Controller
             ->with(['categories', 'attributes', 'ingredients'])
             ->orderBy('created_at', 'desc');
 
-        // Поиск по названию/SKU
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -252,30 +249,22 @@ class CategoryController extends Controller
             });
         }
 
-        // Фильтр по активности
         if ($request->has('is_active')) {
             $query->where('is_active', $request->input('is_active'));
         }
 
-        // Пагинация или все сразу
-        if ($request->input('paginate', false)) {
-            $products = $query->paginate($perPage);
+        // ✅ Всегда возвращаем единый формат
+        $products = $query->paginate($perPage);
 
-            return response()->json([
-                'data' => $products->items(),
-                'pagination' => [
-                    'total' => $products->total(),
-                    'per_page' => $products->perPage(),
-                    'current_page' => $products->currentPage(),
-                    'last_page' => $products->lastPage(),
-                    'from' => $products->firstItem(),
-                    'to' => $products->lastItem(),
-                ]
-            ]);
-        }
-
-        $products = $query->get();
-
-        return response()->json($products);
+        return response()->json([
+            'products' => $products->items(),
+            'pagination' => [
+                'total' => $products->total(),
+                'per_page' => $products->perPage(),
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'has_more' => $products->hasMorePages(),
+            ]
+        ]);
     }
 }
