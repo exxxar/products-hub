@@ -27,11 +27,7 @@
                                     :key="ws.id"
                                     class="ws-checkbox"
                                 >
-                                    <input
-                                        type="checkbox"
-                                        :value="ws.id"
-                                        v-model="selectedIds"
-                                    />
+                                    <input type="checkbox" :value="ws.id" v-model="selectedIds" />
                                     <div class="ws-icon" :style="{ background: ws.color }">
                                         {{ ws.initials || ws.name?.substring(0, 2) }}
                                     </div>
@@ -54,14 +50,11 @@
                                 Обработано {{ syncedCount }} из {{ selectedIds.length }}
                             </p>
                             <div class="progress-bar-wrapper">
-                                <div
-                                    class="progress-fill"
-                                    :style="{ width: progressPercent + '%' }"
-                                ></div>
+                                <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
                             </div>
                         </div>
 
-                        <!-- ШАГ 3: Сводка -->
+                        <!-- ШАГ 3: Сводка (ОБНОВЛЕНО) -->
                         <div v-if="step === 'done'" class="summary-state">
                             <div class="summary-header" :class="hasErrors ? 'has-errors' : 'success'">
                                 <i :class="hasErrors ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-check'"></i>
@@ -73,30 +66,42 @@
                             <div class="summary-list">
                                 <div
                                     v-for="res in syncResults"
-                                    :key="res.workspace_id"
+                                    :key="res.workspace_id || res.id"
                                     class="summary-item"
                                     :class="{ 'is-error': !res.success }"
                                 >
                                     <div class="item-info">
-                                        <strong>{{ res.workspace_name }}</strong>
+                                        <!-- Фолбэк: если нет workspace_name, берем name вебхука -->
+                                        <strong>{{ res.workspace_name || res.name }}</strong>
                                         <span class="item-status" :class="res.success ? 'success' : 'error'">
                                             {{ res.success ? 'Успех' : 'Ошибка' }}
                                         </span>
                                     </div>
                                     <div class="item-details">
-                                        <span v-if="res.success" class="text-success">
-                                            <i class="fa-solid fa-box"></i>
-                                            {{ res.products_synced }} тов.
-                                        </span>
+                                        <!-- ✅ Новая статистика по каждому вебхуку/доске -->
+                                        <div v-if="res.success" class="stats-row">
+                                            <span class="stat-item text-success">
+                                                <i class="fa-solid fa-box"></i>
+                                                {{ res.products_count || res.products_synced || 0 }} тов.
+                                            </span>
+                                            <span class="stat-item stat-collections">
+                                                <i class="fa-solid fa-layer-group"></i>
+                                                {{ res.collections_count || 0 }} колл.
+                                            </span>
+                                            <span v-if="res.execution_time" class="stat-item text-muted">
+                                                <i class="fa-solid fa-stopwatch"></i>
+                                                {{ (res.execution_time / 1000).toFixed(2) }}s
+                                            </span>
+                                        </div>
                                         <span v-else class="text-danger">
                                             <i class="fa-solid fa-circle-xmark"></i>
-                                            {{ res.error }}
+                                            {{ res.error || 'Ошибка синхронизации' }}
                                         </span>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Общая статистика -->
+                            <!-- ✅ Общая статистика внизу -->
                             <div class="summary-total">
                                 <div class="total-item">
                                     <i class="fa-solid fa-check-circle text-success"></i>
@@ -108,7 +113,15 @@
                                 </div>
                                 <div class="total-item">
                                     <i class="fa-solid fa-box text-primary"></i>
-                                    <span>{{ totalProducts }} товаров</span>
+                                    <span>{{ totalProducts }} тов.</span>
+                                </div>
+                                <div class="total-item">
+                                    <i class="fa-solid fa-layer-group stat-collections-icon"></i>
+                                    <span>{{ totalCollections }} колл.</span>
+                                </div>
+                                <div class="total-item">
+                                    <i class="fa-solid fa-stopwatch text-muted"></i>
+                                    <span>{{ (totalExecutionTime / 1000).toFixed(1) }}s</span>
                                 </div>
                             </div>
                         </div>
@@ -116,21 +129,12 @@
 
                     <!-- Footer -->
                     <div class="modal-footer-custom">
-                        <button v-if="step === 'select'" class="btn-cancel" @click="close">
-                            Отмена
-                        </button>
-                        <button
-                            v-if="step === 'select'"
-                            class="btn-save"
-                            :disabled="selectedIds.length === 0"
-                            @click="startSync"
-                        >
-                            <i class="fa-solid fa-play"></i>
-                            Начать синхронизацию
+                        <button v-if="step === 'select'" class="btn-cancel" @click="close">Отмена</button>
+                        <button v-if="step === 'select'" class="btn-save" :disabled="selectedIds.length === 0" @click="startSync">
+                            <i class="fa-solid fa-play"></i> Начать синхронизацию
                         </button>
                         <button v-if="step === 'done'" class="btn-save" @click="close">
-                            <i class="fa-solid fa-check"></i>
-                            Закрыть
+                            <i class="fa-solid fa-check"></i> Закрыть
                         </button>
                     </div>
                 </div>
@@ -144,70 +148,55 @@ import { useWorkspaceStore } from '@/store/workspace.js'
 
 export default {
     name: 'GroupSyncModal',
-
     props: {
-        modelValue: {
-            type: Boolean,
-            default: false
-        },
-        group: {
-            type: Object,
-            default: null
-        }
+        modelValue: { type: Boolean, default: false },
+        group: { type: Object, default: null }
     },
-
     emits: ['update:modelValue', 'synced'],
-
     data() {
         return {
             store: useWorkspaceStore(),
-            step: 'select', // select, syncing, done
+            step: 'select',
             selectedIds: [],
             syncResults: [],
             syncedCount: 0
         }
     },
-
     computed: {
         groupWorkspaces() {
             return this.group?.workspaces || []
         },
-
         stepTitle() {
-            const titles = {
-                select: 'Выбор досок для синхронизации',
-                syncing: 'Синхронизация...',
-                done: 'Результаты синхронизации'
-            }
+            const titles = { select: 'Выбор досок', syncing: 'Синхронизация...', done: 'Результаты' }
             return titles[this.step]
         },
-
         progressPercent() {
             if (this.selectedIds.length === 0) return 0
             return Math.round((this.syncedCount / this.selectedIds.length) * 100)
         },
-
         hasErrors() {
             return this.syncResults.some(r => !r.success)
         },
-
         successCount() {
             return this.syncResults.filter(r => r.success).length
         },
-
         failCount() {
             return this.syncResults.filter(r => !r.success).length
         },
-
+        // ✅ Новые итоги
         totalProducts() {
-            return this.syncResults.reduce((sum, r) => sum + (r.products_synced || 0), 0)
+            return this.syncResults.reduce((sum, r) => sum + (r.products_count || r.products_synced || 0), 0)
+        },
+        totalCollections() {
+            return this.syncResults.reduce((sum, r) => sum + (r.collections_count || 0), 0)
+        },
+        totalExecutionTime() {
+            return this.syncResults.reduce((sum, r) => sum + (r.execution_time || 0), 0)
         }
     },
-
     watch: {
         modelValue(val) {
             if (val && this.group) {
-                // Инициализируем форму при открытии
                 this.step = 'select'
                 this.selectedIds = this.group.workspaces.map(w => w.id)
                 this.syncResults = []
@@ -218,12 +207,8 @@ export default {
             }
         }
     },
-
     methods: {
-        close() {
-            this.$emit('update:modelValue', false)
-        },
-
+        close() { this.$emit('update:modelValue', false) },
         async startSync() {
             this.step = 'syncing'
             this.syncedCount = 0
@@ -231,14 +216,11 @@ export default {
 
             try {
                 const results = await this.store.syncGroup(this.group.id, this.selectedIds)
-
-                // Пошаговый прогресс для анимации
                 for (let i = 0; i < results.length; i++) {
                     this.syncResults.push(results[i])
                     this.syncedCount = i + 1
-                    await new Promise(r => setTimeout(r, 300))
+                    await new Promise(r => setTimeout(r, 250))
                 }
-
                 this.step = 'done'
                 this.$emit('synced', results)
             } catch (e) {
@@ -248,12 +230,10 @@ export default {
             }
         }
     },
-
-    beforeUnmount() {
-        document.body.style.overflow = ''
-    }
+    beforeUnmount() { document.body.style.overflow = '' }
 }
 </script>
+
 
 <style scoped>
 .modal-overlay {
@@ -618,5 +598,29 @@ export default {
         align-items: flex-start;
         gap: 6px;
     }
+}
+
+.stats-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Фиолетовый цвет для коллекций, чтобы отличать от товаров */
+.stat-collections, .stat-collections-icon {
+    color: #6f42c1 !important;
+}
+
+.text-muted {
+    color: #868e96 !important;
 }
 </style>

@@ -375,12 +375,16 @@ export default {
         async onGroupSynced(results) {
             const successCount = results.filter(r => r.success).length
             const failCount = results.length - successCount
-            const totalProducts = results.reduce((sum, r) => sum + (r.products_synced || 0), 0)
+
+            // Считаем итоги (с фолбэком на старые поля, если они вдруг придут)
+            const totalProducts = results.reduce((sum, r) => sum + (r.products_count || r.products_synced || 0), 0)
+            const totalCollections = results.reduce((sum, r) => sum + (r.collections_count || 0), 0)
 
             if (failCount === 0) {
                 this.$notify?.success({
                     title: 'Синхронизация завершена',
-                    message: `${successCount} досок, ${totalProducts} товаров`
+                    // ✅ Используем разделители для читаемости
+                    message: `${successCount} досок • ${totalProducts} товаров • ${totalCollections} коллекций`
                 })
             } else {
                 this.$notify?.warning({

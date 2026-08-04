@@ -31,9 +31,14 @@ class Webhook extends Model
 
     /**
      * Отправить синхронизацию
+     *
+     * @return array{success: bool, products_count: int, collections_count: int, error: string|null}
      */
-    public function sync($product = null)
+    public function sync($product = null): array
     {
+        // ✅ Сначала считаем статистику ДО отправки
+        $stats = $this->calculateSyncStats($product);
+
         try {
             $payload = $this->buildPayload($product);
 
@@ -41,6 +46,7 @@ class Webhook extends Model
                 'webhook_id' => $this->id,
                 'url' => $this->url,
                 'event' => $product ? 'product.updated' : 'workspace.sync',
+                'stats' => $stats,
             ]);
 
             $response = Http::timeout(30)
@@ -60,24 +66,29 @@ class Webhook extends Model
                     'last_error' => null
                 ]);
 
-                return true;
+                return array_merge($stats, [
+                    'success' => true,
+                    'error' => null,
+                ]);
             } else {
-                // ✅ ИСПРАВЛЕНИЕ 1: Убрали Str::limit, чтобы видеть ПОЛНУЮ ошибку от принимающего сервера
                 $errorMessage = "HTTP {$response->status()}: " . $response->body();
 
                 $this->update([
                     'last_status' => 'failed',
-                    'last_error' => Str::limit($errorMessage, 500) // Обрезаем только при сохранении в БД, чтобы не раздуть таблицу
+                    'last_error' => Str::limit($errorMessage, 500)
                 ]);
 
                 Log::error('Webhook sync failed', [
                     'webhook_id' => $this->id,
                     'url' => $this->url,
                     'status' => $response->status(),
-                    'full_response_body' => $response->body() // ✅ Логируем полный ответ для отладки
+                    'full_response_body' => $response->body()
                 ]);
 
-                return false;
+                return array_merge($stats, [
+                    'success' => false,
+                    'error' => $errorMessage,
+                ]);
             }
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
@@ -93,13 +104,40 @@ class Webhook extends Model
                 'error' => $errorMessage,
             ]);
 
-            return false;
+            return array_merge($stats, [
+                'success' => false,
+                'error' => $errorMessage,
+            ]);
         }
     }
 
     /**
+     * ✅ Подсчёт статистики: сколько товаров и коллекций будет синхронизировано
+     */
+    protected function calculateSyncStats($product = null): array
+    {
+        $workspace = $this->workspace;
+
+        if ($product) {
+            // Обновление одного товара: 1 товар + все коллекции, к которым он привязан
+            $product->loadMissing('collections');
+
+            return [
+                'products_count' => 1,
+                'collections_count' => $product->collections->count(),
+                'event' => 'product.updated',
+            ];
+        }
+
+        // Полная синхронизация воркспейса
+        return [
+            'products_count' => $workspace->products()->count(),
+            'collections_count' => $workspace->collections()->count(),
+            'event' => 'workspace.sync',
+        ];
+    }
+    /**
      * Сформировать payload для вебхука
-     * Структура адаптирована под строгую валидацию принимающего API
      */
     protected function buildPayload($product = null)
     {
@@ -107,7 +145,7 @@ class Webhook extends Model
             $workspace = $this->workspace;
 
             if ($product) {
-                $product->loadMissing(['categories', 'attributes', 'ingredients']);
+                $product->loadMissing(['categories', 'attributes', 'ingredients', 'collections']);
 
                 return [
                     'event' => 'product.updated',
@@ -118,11 +156,25 @@ class Webhook extends Model
                         'name' => $workspace->name
                     ],
                     'data' => [
-                        'product' => $this->buildProductData($product)
+                        'product' => $this->buildProductData($product),
+                        // ✅ Передаем коллекции, к которым привязан обновленный товар,
+                        // чтобы принимающая сторона могла пересчитать цены наборов
+                        'collections' => collect($product->collections ?? [])->map(function ($c) {
+                            return $this->buildCollectionData($c);
+                        })->values()->all()
                     ]
                 ];
             } else {
-                $workspace->loadMissing(['products.categories', 'products.attributes', 'products.ingredients']);
+                // Предзагружаем связи для товаров и коллекций (избегаем N+1)
+                $workspace->loadMissing([
+                    'products.categories',
+                    'products.attributes',
+                    'products.ingredients',
+                    'products.collections',
+                    'collections.collectionCategories.products',
+                    'collections.collectionCategories.category',
+                    'collections.products'
+                ]);
 
                 return [
                     'event' => 'workspace.sync',
@@ -133,6 +185,10 @@ class Webhook extends Model
                         'name' => $workspace->name,
                         'products' => collect($workspace->products ?? [])->map(function ($p) {
                             return $this->buildProductData($p);
+                        })->values()->all(),
+                        // ✅ Передаем ВСЕ коллекции воркспейса
+                        'collections' => collect($workspace->collections ?? [])->map(function ($c) {
+                            return $this->buildCollectionData($c);
                         })->values()->all()
                     ]
                 ];
@@ -143,7 +199,6 @@ class Webhook extends Model
                 'error' => $e->getMessage(),
             ]);
 
-            // Возвращаем минимальный валидный payload даже при ошибке сборки
             return [
                 'event' => $product ? 'product.updated' : 'workspace.sync',
                 'timestamp' => now()->toISOString(),
@@ -158,10 +213,12 @@ class Webhook extends Model
     }
 
     /**
-     * ✅ Безопасное построение данных товара (оставляем как было, оно отличное)
+     * ✅ Безопасное построение данных товара
      */
     protected function buildProductData(Product $product): array
     {
+        $product->loadMissing('collections');
+
         return [
             'id' => $product->id,
             'name' => $product->name,
@@ -186,12 +243,97 @@ class Webhook extends Model
             'ingredients' => $this->safeMapRelation($product->ingredients ?? [], function ($i) {
                 return ['id' => $i->id ?? null, 'name' => $i->name ?? ''];
             }),
+            // ✅ Добавили список коллекций, в которых состоит товар
+            'collections' => $this->safeMapRelation($product->collections ?? [], function ($c) {
+                return [
+                    'id' => $c->id ?? null,
+                    'name' => $c->name ?? '',
+                    'sort_order' => $c->pivot->sort_order ?? null
+                ];
+            }),
             'updated_at' => $product->updated_at?->toISOString() ?? now()->toISOString(),
         ];
     }
 
     /**
-     * ✅ Безопасный map для отношений (оставляем как было)
+     * ✅ Построение данных коллекции
+     */
+    protected function buildCollectionData(Collection $collection): array
+    {
+        try {
+            // Предзагружаем связи для корректной работы аксессоров (calculated_price, final_price и т.д.)
+            $collection->loadMissing([
+                'collectionCategories.products',
+                'products',
+                'collectionCategories.category'
+            ]);
+
+            return [
+                'id' => $collection->id,
+                'name' => $collection->name,
+                'description' => $collection->description ?? '',
+                'short_description' => $collection->short_description ?? '',
+                'type' => $collection->type,
+                'pricing_type' => $collection->pricing_type,
+                'fixed_price' => $collection->fixed_price !== null ? (float) $collection->fixed_price : null,
+                'discount_percent' => $collection->discount_percent,
+                'image_url' => $collection->image_url ?? '',
+                'is_active' => (bool) $collection->is_active,
+                'in_stop_list' => (bool) $collection->in_stop_list,
+                'sort_order' => $collection->sort_order,
+                'calculated_price' => (float) $collection->calculated_price,
+                'calculated_old_price' => $collection->calculated_old_price ? (float) $collection->calculated_old_price : null,
+                'products_count' => (int) $collection->products_count,
+                'discount_amount' => (float) $collection->discount_amount,
+                'final_price' => (float) $collection->final_price,
+
+                // Категории внутри custom-коллекций
+                'collection_categories' => $this->safeMapRelation($collection->collectionCategories ?? [], function ($cc) {
+                    return [
+                        'id' => $cc->id,
+                        'category_id' => $cc->category_id,
+                        'category_name' => $cc->category_name ?? '',
+                        'selection_rule' => $cc->selection_rule,
+                        'sort_order' => $cc->sort_order,
+                        'rule_label' => $cc->rule_label ?? '',
+                        'subtotal' => (float) $cc->subtotal,
+                        // Передаем только ID товаров и порядок, чтобы не дублировать полные объекты товаров
+                        'products' => $this->safeMapRelation($cc->products ?? [], function ($p) {
+                            return [
+                                'id' => $p->id,
+                                'sort_order' => $p->pivot->sort_order ?? null
+                            ];
+                        })
+                    ];
+                }),
+
+                // Прямые товары (для all_products)
+                'direct_products' => $collection->type === Collection::TYPE_ALL_PRODUCTS
+                    ? $this->safeMapRelation($collection->products ?? [], function ($p) {
+                        return [
+                            'id' => $p->id,
+                            'sort_order' => $p->pivot->sort_order ?? null
+                        ];
+                    })
+                    : []
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Build collection data failed', [
+                'collection_id' => $collection->id ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            // Возвращаем минимальный безопасный fallback
+            return [
+                'id' => $collection->id ?? null,
+                'name' => $collection->name ?? '',
+                'error' => 'Failed to build collection data'
+            ];
+        }
+    }
+
+    /**
+     * Безопасный map для отношений
      */
     protected function safeMapRelation($data, callable $callback): array
     {
@@ -210,5 +352,4 @@ class Webhook extends Model
             return [];
         }
     }
-
 }

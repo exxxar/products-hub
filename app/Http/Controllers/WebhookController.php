@@ -78,10 +78,14 @@ class WebhookController extends Controller
         $productId = $request->query('product_id');
         $product = $productId ? $workspace->products()->find($productId) : null;
 
-        $success = $webhook->sync($product);
+        $result = $webhook->sync($product); // теперь возвращает массив
 
         return response()->json([
-            'success' => $success,
+            'success' => $result['success'],
+            'products_count' => $result['products_count'],
+            'collections_count' => $result['collections_count'],
+            'event' => $result['event'],
+            'error' => $result['error'],
             'webhook' => $webhook->fresh()
         ]);
     }
@@ -99,17 +103,21 @@ class WebhookController extends Controller
             $webhookStartTime = microtime(true);
 
             try {
-                $success = $webhook->sync($product);
+                // sync() теперь возвращает массив со статистикой
+                $result = $webhook->sync($product);
                 $executionTime = round((microtime(true) - $webhookStartTime) * 1000);
 
                 $results[] = [
                     'id' => $webhook->id,
                     'name' => $webhook->name,
                     'url' => $webhook->url,
-                    'success' => $success,
-                    'status' => $success ? 200 : ($webhook->last_status ?? 'failed'),
+                    'success' => $result['success'],
+                    'event' => $result['event'],
+                    'status' => $result['success'] ? 200 : ($webhook->last_status ?? 'failed'),
                     'execution_time' => $executionTime,
-                    'error' => null,
+                    'products_count' => $result['products_count'],
+                    'collections_count' => $result['collections_count'],
+                    'error' => $result['error'],
                 ];
             } catch (\Exception $e) {
                 $results[] = [
@@ -118,17 +126,29 @@ class WebhookController extends Controller
                     'url' => $webhook->url,
                     'success' => false,
                     'status' => 'ERROR',
+                    'products_count' => 0,
+                    'collections_count' => 0,
                     'error' => $e->getMessage(),
                 ];
             }
         }
 
+        $successfulResults = collect($results)->where('success', true);
+        $totalExecution = round((microtime(true) - $startTime) * 1000);
+
         return response()->json([
             'success' => true,
             'results' => $results,
-            'total' => count($results),
-            'successful' => collect($results)->where('success', true)->count(),
+            'total_webhooks' => count($results),
+            'successful' => $successfulResults->count(),
             'failed' => collect($results)->where('success', false)->count(),
+
+            // ✅ Общие итоги
+            'totals' => [
+                'products_processed' => $successfulResults->sum('products_count'),
+                'collections_processed' => $successfulResults->sum('collections_count'),
+                'total_execution_time' => $totalExecution,
+            ],
         ]);
     }
 }
