@@ -372,24 +372,30 @@ export default {
             this.$notify?.success('Вебхуки обновлены')
         },
 
-        async onGroupSynced(results) {
+        async onGroupSynced(payload) {
+            // ✅ Поддержка обоих форматов (массив и объект)
+            const results = Array.isArray(payload) ? payload : (payload?.results || [])
+            const totals = Array.isArray(payload) ? null : (payload?.totals || null)
+
             const successCount = results.filter(r => r.success).length
             const failCount = results.length - successCount
 
-            // Считаем итоги (с фолбэком на старые поля, если они вдруг придут)
-            const totalProducts = results.reduce((sum, r) => sum + (r.products_count || r.products_synced || 0), 0)
-            const totalCollections = results.reduce((sum, r) => sum + (r.collections_count || 0), 0)
+            // Используем серверные итоги, если есть — это быстрее и точнее
+            const totalProducts = totals?.products_processed
+                ?? results.reduce((sum, r) => sum + (r.products_count || r.products_synced || 0), 0)
+
+            const totalCollections = totals?.collections_processed
+                ?? results.reduce((sum, r) => sum + (r.collections_count || 0), 0)
 
             if (failCount === 0) {
                 this.$notify?.success({
                     title: 'Синхронизация завершена',
-                    // ✅ Используем разделители для читаемости
                     message: `${successCount} досок • ${totalProducts} товаров • ${totalCollections} коллекций`
                 })
             } else {
                 this.$notify?.warning({
                     title: 'Синхронизация с ошибками',
-                    message: `${successCount} успешно, ${failCount} с ошибками`
+                    message: `${successCount} успешно, ${failCount} с ошибками. Товаров: ${totalProducts}, коллекций: ${totalCollections}`
                 })
             }
         },

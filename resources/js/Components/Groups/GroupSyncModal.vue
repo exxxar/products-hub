@@ -66,37 +66,35 @@
                             <div class="summary-list">
                                 <div
                                     v-for="res in syncResults"
-                                    :key="res.workspace_id || res.id"
+                                    :key="res.workspace_id || res.webhook_id || res.id"
                                     class="summary-item"
                                     :class="{ 'is-error': !res.success }"
                                 >
                                     <div class="item-info">
-                                        <!-- Фолбэк: если нет workspace_name, берем name вебхука -->
                                         <strong>{{ res.workspace_name || res.name }}</strong>
-                                        <span class="item-status" :class="res.success ? 'success' : 'error'">
-                                            {{ res.success ? 'Успех' : 'Ошибка' }}
-                                        </span>
+                                        <span v-if="res.webhook_name" class="webhook-subtitle">
+            <i class="fa-solid fa-link"></i> {{ res.webhook_name }}
+        </span>
                                     </div>
                                     <div class="item-details">
-                                        <!-- ✅ Новая статистика по каждому вебхуку/доске -->
                                         <div v-if="res.success" class="stats-row">
-                                            <span class="stat-item text-success">
-                                                <i class="fa-solid fa-box"></i>
-                                                {{ res.products_count || res.products_synced || 0 }} тов.
-                                            </span>
+            <span class="stat-item text-success">
+                <i class="fa-solid fa-box"></i>
+                {{ res.products_count || res.products_synced || 0 }} тов.
+            </span>
                                             <span class="stat-item stat-collections">
-                                                <i class="fa-solid fa-layer-group"></i>
-                                                {{ res.collections_count || 0 }} колл.
-                                            </span>
+                <i class="fa-solid fa-layer-group"></i>
+                {{ res.collections_count || 0 }} колл.
+            </span>
                                             <span v-if="res.execution_time" class="stat-item text-muted">
-                                                <i class="fa-solid fa-stopwatch"></i>
-                                                {{ (res.execution_time / 1000).toFixed(2) }}s
-                                            </span>
+                <i class="fa-solid fa-stopwatch"></i>
+                {{ (res.execution_time / 1000).toFixed(2) }}s
+            </span>
                                         </div>
-                                        <span v-else class="text-danger">
-                                            <i class="fa-solid fa-circle-xmark"></i>
-                                            {{ res.error || 'Ошибка синхронизации' }}
-                                        </span>
+                                        <span v-else class="text-danger error-text">
+            <i class="fa-solid fa-circle-xmark"></i>
+            {{ res.error || 'Ошибка синхронизации' }}
+        </span>
                                     </div>
                                 </div>
                             </div>
@@ -159,7 +157,8 @@ export default {
             step: 'select',
             selectedIds: [],
             syncResults: [],
-            syncedCount: 0
+            syncedCount: 0,
+            totals: null // ← Серверные итоги
         }
     },
     computed: {
@@ -183,14 +182,23 @@ export default {
         failCount() {
             return this.syncResults.filter(r => !r.success).length
         },
-        // ✅ Новые итоги
+        // ✅ Используем серверные totals, если есть, иначе считаем вручную
         totalProducts() {
+            if (this.totals?.products_processed !== undefined) {
+                return this.totals.products_processed
+            }
             return this.syncResults.reduce((sum, r) => sum + (r.products_count || r.products_synced || 0), 0)
         },
         totalCollections() {
+            if (this.totals?.collections_processed !== undefined) {
+                return this.totals.collections_processed
+            }
             return this.syncResults.reduce((sum, r) => sum + (r.collections_count || 0), 0)
         },
         totalExecutionTime() {
+            if (this.totals?.total_execution_time !== undefined) {
+                return this.totals.total_execution_time
+            }
             return this.syncResults.reduce((sum, r) => sum + (r.execution_time || 0), 0)
         }
     },
@@ -201,6 +209,7 @@ export default {
                 this.selectedIds = this.group.workspaces.map(w => w.id)
                 this.syncResults = []
                 this.syncedCount = 0
+                this.totals = null
                 document.body.style.overflow = 'hidden'
             } else {
                 document.body.style.overflow = ''
@@ -213,16 +222,36 @@ export default {
             this.step = 'syncing'
             this.syncedCount = 0
             this.syncResults = []
+            this.totals = null
 
             try {
-                const results = await this.store.syncGroup(this.group.id, this.selectedIds)
+                const response = await this.store.syncGroup(this.group.id, this.selectedIds)
+
+                // ✅ Универсальный парсер ответа бэкенда
+                let results = []
+                let totals = null
+
+                if (Array.isArray(response)) {
+                    // Старый формат: store вернул просто массив
+                    results = response
+                } else if (response && Array.isArray(response.results)) {
+                    // Новый формат: { success, results, totals, ... }
+                    results = response.results
+                    totals = response.totals || null
+                }
+
+                this.totals = totals
+
+                // Пошаговая анимация появления результатов
                 for (let i = 0; i < results.length; i++) {
                     this.syncResults.push(results[i])
                     this.syncedCount = i + 1
                     await new Promise(r => setTimeout(r, 250))
                 }
+
                 this.step = 'done'
-                this.$emit('synced', results)
+                // Передаём родителю объект с обеими сущностями
+                this.$emit('synced', { results, totals })
             } catch (e) {
                 console.error('Sync failed:', e)
                 this.$notify?.error('Ошибка при синхронизации')
@@ -622,5 +651,31 @@ export default {
 
 .text-muted {
     color: #868e96 !important;
+}
+
+.webhook-subtitle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #868e96;
+    margin-top: 2px;
+}
+
+.error-text {
+    font-size: 12px;
+    max-width: 250px;
+    word-break: break-word;
+}
+
+.summary-total {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    border: 1px solid #dee2e6;
 }
 </style>
