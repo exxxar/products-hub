@@ -111,6 +111,7 @@ class Webhook extends Model
         }
     }
 
+
     /**
      * ✅ Подсчёт статистики: сколько товаров и коллекций будет синхронизировано
      */
@@ -124,15 +125,18 @@ class Webhook extends Model
 
             return [
                 'products_count' => 1,
-                'collections_count' => $product->collections->count(),
+                'collections_count' => $product->collections->count(), // свойство, не метод
                 'event' => 'product.updated',
             ];
         }
 
         // Полная синхронизация воркспейса
+        // Загружаем коллекции явно, чтобы получить Collection, а не Query Builder
+        $workspace->loadMissing('collections');
+
         return [
-            'products_count' => $workspace->products()->count(),
-            'collections_count' => $workspace->collections()->count(),
+            'products_count' => $workspace->products_count ?? $workspace->products()->count(),
+            'collections_count' => $workspace->collections->count(), // свойство, не метод
             'event' => 'workspace.sync',
         ];
     }
