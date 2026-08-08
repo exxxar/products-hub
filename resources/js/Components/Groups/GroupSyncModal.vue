@@ -21,6 +21,27 @@
                             <p class="modal-description">
                                 Отметьте доски, которые нужно синхронизировать прямо сейчас:
                             </p>
+
+                            <!-- ✅ Блок "Выбрать все" -->
+                            <div class="select-all-wrapper">
+                                <label class="select-all-label">
+                                    <input
+                                        type="checkbox"
+                                        :checked="isAllSelected"
+                                        :indeterminate="isIndeterminate"
+                                        @change="toggleSelectAll"
+                                    />
+                                    <span class="select-all-text">
+                <template v-if="isAllSelected">Снять выбор</template>
+                <template v-else-if="isIndeterminate">Выбрать оставшиеся</template>
+                <template v-else>Выбрать все</template>
+            </span>
+                                    <span class="selected-counter">
+                ({{ selectedIds.length }} из {{ groupWorkspaces.length }})
+            </span>
+                                </label>
+                            </div>
+
                             <div class="workspace-list">
                                 <label
                                     v-for="ws in groupWorkspaces"
@@ -162,6 +183,16 @@ export default {
         }
     },
     computed: {
+        isAllSelected() {
+            return this.groupWorkspaces.length > 0
+                && this.selectedIds.length === this.groupWorkspaces.length
+        },
+
+        // ✅ Выбрана ли часть (для indeterminate)
+        isIndeterminate() {
+            return this.selectedIds.length > 0
+                && this.selectedIds.length < this.groupWorkspaces.length
+        },
         groupWorkspaces() {
             return this.group?.workspaces || []
         },
@@ -217,6 +248,15 @@ export default {
         }
     },
     methods: {
+        toggleSelectAll() {
+            if (this.isAllSelected) {
+                // Все выбраны → снимаем
+                this.selectedIds = []
+            } else {
+                // Часть или ничего → выбираем все
+                this.selectedIds = this.groupWorkspaces.map(w => w.id)
+            }
+        },
         close() { this.$emit('update:modelValue', false) },
         async startSync() {
             this.step = 'syncing'
@@ -677,5 +717,61 @@ export default {
     justify-content: center;
     flex-wrap: wrap;
     border: 1px solid #dee2e6;
+}
+
+/* === Select All Wrapper === */
+.select-all-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #e7f1ff 0%, #f3f0ff 100%);
+    border: 1px solid #d0e2ff;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.select-all-wrapper:hover {
+    background: linear-gradient(135deg, #d0e2ff 0%, #e7deff 100%);
+    border-color: #a5c7ff;
+}
+
+.select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    cursor: pointer;
+    user-select: none;
+}
+
+.select-all-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #0d6efd;
+    flex-shrink: 0;
+}
+
+.select-all-text {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+.selected-counter {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+/* Стили для indeterminate состояния */
+.select-all-label input[type="checkbox"]:indeterminate {
+    accent-color: #6f42c1;
 }
 </style>
