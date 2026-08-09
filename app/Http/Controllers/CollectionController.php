@@ -34,6 +34,89 @@ class CollectionController extends Controller
         return response()->json($collections->map(fn($c) => $this->formatCollection($c, short: false)));
     }
 
+    protected function processImageUpload(Request $request, $workspace, ?Collection $collection = null, ?string $collectionName = null): ?string
+    {
+        // 1. Если загружен НОВЫЙ файл — сохраняем его
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $directory = "workspaces/{$workspace->id}/collections";
+            $fileName = $this->generateImageFileName($file, $collectionName ?? 'collection');
+
+            // storeAs возвращает относительный путь: "workspaces/1/collections/slug-uuid.jpg"
+            $relativePath = $file->storeAs($directory, $fileName, 'public');
+
+            // Добавляем префикс для полного пути
+            $fullStoragePath = "storage/app/public/{$relativePath}";
+
+            // Удаляем старое изображение ПОСЛЕ успешного сохранения нового
+            if ($collection && $collection->image_url) {
+                $this->deleteOldImage($collection->image_url);
+            }
+
+            return $fullStoragePath; // В БД уйдет "storage/app/public/workspaces/..."
+        }
+
+        // 2. Если пришёл флаг удаления — удаляем файл и возвращаем null
+        if ($request->boolean('remove_image')) {
+            if ($collection && $collection->image_url) {
+                $this->deleteOldImage($collection->image_url);
+            }
+            return null;
+        }
+
+        // 3. Если файл не трогали — оставляем старое изображение (при обновлении)
+        if ($collection) {
+            return $collection->image_url;
+        }
+
+        return null;
+    }
+
+    protected function deleteOldImage(?string $imageUrl): void
+    {
+        if (!$imageUrl) return;
+
+        // Если это путь с префиксом storage/app/public/
+        if (Str::startsWith($imageUrl, 'storage/app/public/')) {
+            // Извлекаем относительный путь для Storage::disk('public')
+            $relativePath = Str::after($imageUrl, 'storage/app/public/');
+            Storage::disk('public')->delete($relativePath);
+            return;
+        }
+
+        // Если это относительный путь (старый формат: workspaces/1/collections/...)
+        if (!Str::startsWith($imageUrl, ['http://', 'https://', '/storage/'])) {
+            Storage::disk('public')->delete($imageUrl);
+            return;
+        }
+
+        // Если это полный URL или /storage/... путь — извлекаем относительный путь
+        if (Str::startsWith($imageUrl, ['/storage/', 'http://', 'https://'])) {
+            $path = str_replace('/storage/', '', parse_url($imageUrl, PHP_URL_PATH));
+            if ($path && $path !== '/') {
+                Storage::disk('public')->delete($path);
+            }
+        }
+    }
+
+    protected function formatImageUrl(?string $value): ?string
+    {
+        if (!$value) return null;
+
+        // Если это уже полный URL
+        if (Str::startsWith($value, ['http://', 'https://'])) {
+            return $value;
+        }
+
+        // Если это путь с префиксом storage/app/public/
+        if (Str::startsWith($value, 'storage/app/public/')) {
+            $relativePath = Str::after($value, 'storage/app/public/');
+            return Storage::disk('public')->url($relativePath);
+        }
+
+        // Если это относительный путь (старый формат)
+        return Storage::disk('public')->url($value);
+    }
     // ============================================================
     // Store
     // ============================================================
@@ -351,43 +434,6 @@ class CollectionController extends Controller
         }
     }
 
-    /**
-     * 🔥 ГЛАВНЫЙ МЕТОД: Обработка загрузки изображения коллекции
-     *
-     * Путь сохранения: workspaces/{workspace_id}/collections/{slug}-{uuid}.{ext}
-     * URL будет: /storage/workspaces/{workspace_id}/collections/{slug}-{uuid}.{ext}
-     */
-    protected function processImageUpload(Request $request, $workspace, ?Collection $collection = null, ?string $collectionName = null): ?string
-    {
-        // 1. Если загружен НОВЫЙ файл — сохраняем его
-        if ($request->hasFile('image')) {
-            // Удаляем старое изображение, если оно было
-            if ($collection && $collection->image_url) {
-                $this->deleteOldImage($collection->image_url);
-            }
-
-            $file = $request->file('image');
-            $directory = "workspaces/{$workspace->id}/collections";
-            $fileName = $this->generateImageFileName($file, $collectionName ?? 'collection');
-
-            return $file->storeAs($directory, $fileName, 'public');
-        }
-
-        // 2. Если пришёл флаг удаления — удаляем
-        if ($request->boolean('remove_image')) {
-            if ($collection && $collection->image_url) {
-                $this->deleteOldImage($collection->image_url);
-            }
-            return null;
-        }
-
-        // 3. Если файл не трогали — оставляем старое изображение (при обновлении)
-        if ($collection) {
-            return $collection->image_url;
-        }
-
-        return null;
-    }
 
     /**
      * 🔥 Генерирует читаемое имя файла: {slug-названия}-{uuid}.{ext}
@@ -412,24 +458,7 @@ class CollectionController extends Controller
         return "{$slug}-{$shortUuid}.{$extension}";
     }
 
-    protected function deleteOldImage(?string $imageUrl): void
-    {
-        if (!$imageUrl) return;
 
-        // Если это относительный путь (наш новый формат: workspaces/1/collections/...)
-        if (!Str::startsWith($imageUrl, ['http://', 'https://', '/storage/'])) {
-            Storage::disk('public')->delete($imageUrl);
-            return;
-        }
-
-        // Если это полный URL или /storage/... путь — извлекаем относительный путь
-        if (Str::startsWith($imageUrl, ['/storage/', 'http://', 'https://'])) {
-            $path = str_replace('/storage/', '', parse_url($imageUrl, PHP_URL_PATH));
-            if ($path && $path !== '/') {
-                Storage::disk('public')->delete($path);
-            }
-        }
-    }
 
     // ============================================================
     // Formatters
@@ -508,14 +537,5 @@ class CollectionController extends Controller
         return $data;
     }
 
-    protected function formatImageUrl(?string $value): ?string
-    {
-        if (!$value) return null;
 
-        if (Str::startsWith($value, ['http://', 'https://'])) {
-            return $value;
-        }
-
-        return Storage::disk('public')->url($value);
-    }
 }
