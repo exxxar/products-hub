@@ -25,6 +25,7 @@ class Product extends Model
         'config',
         'external_id',
         'is_active',
+        'is_composite',
         'in_stop_list',
     ];
 
@@ -33,14 +34,35 @@ class Product extends Model
         'config' => 'array',
         'dimensions' => 'array',
         'is_active' => 'boolean',
+        'is_composite' => 'boolean',
         'in_stop_list' => 'boolean',
     ];
 
-    protected $with = ["categories"];
+    protected $with = ["categories","components"];
 
     public function workspace()
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    /**
+     * Товары, которые входят в состав этого товара (дочерние)
+     */
+    public function components()
+    {
+        return $this->belongsToMany(Product::class, 'product_components', 'composite_product_id', 'component_product_id')
+            ->withPivot(['quantity', 'sort_order'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Товары, в состав которых входит этот товар (родительские)
+     */
+    public function compositeProducts()
+    {
+        return $this->belongsToMany(Product::class, 'product_components', 'component_product_id', 'composite_product_id')
+            ->withPivot(['quantity', 'sort_order'])
+            ->withTimestamps();
     }
 
     public function categories()
@@ -60,17 +82,11 @@ class Product extends Model
             ->withTimestamps();
     }
 
+    // 🔥 Группы ингредиентов этого товара
     public function ingredientGroups()
     {
-        return $this->belongsToMany(IngredientGroup::class, 'product_ingredient_groups')
-            ->withPivot(['is_required', 'selection_type'])
-            ->withTimestamps();
+        return $this->hasMany(IngredientGroup::class)->orderBy('sort_order');
     }
 
-    public function ingredients()
-    {
-        return $this->belongsToMany(Ingredient::class, 'product_ingredients')
-            ->withPivot(['default_selected', 'extra_price'])
-            ->withTimestamps();
-    }
+
 }

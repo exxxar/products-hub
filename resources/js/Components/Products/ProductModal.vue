@@ -105,16 +105,11 @@ export default {
                 old_price: 0,
                 description: '',
                 categories: [],
-                dimensions: {
-                    width: 0,
-                    height: 0,
-                    length: 0,
-                    weight: 0
-                },
+                dimensions: { width: 0, height: 0, length: 0, weight: 0 },
                 images: [],
-                variants: [],
                 attributes: [],
-                ingredients: []
+                ingredient_groups: [], // 🔥 Массив групп с ингредиентами
+                components: []
             }
         },
 
@@ -134,7 +129,25 @@ export default {
                         name: img.name || ''
                     })) ?? [],
                     attributes: JSON.parse(JSON.stringify(this.product.attributes ?? [])),
-                    ingredients: this.product.ingredients?.map(i => i.id) ?? [],
+                    // 🔥 Копируем группы с ингредиентами
+                    ingredient_groups: (this.product.ingredient_groups || []).map(g => ({
+                        id: g.id,
+                        name: g.name,
+                        sort_order: g.sort_order || 0,
+                        ingredients: (g.ingredients || []).map(i => ({
+                            id: i.id,
+                            name: i.name,
+                            extra_price: i.extra_price || 0,
+                            is_default: i.is_default || false,
+                            sort_order: i.sort_order || 0,
+                        }))
+                    })),
+                    components: this.product.components?.map(c => ({
+                        id: c.id,
+                        name: c.name,
+                        quantity: c.pivot?.quantity || 1,
+                        is_default: c.pivot?.is_default || false,
+                    })) ?? [],
                     dimensions: {
                         width: this.product.dimensions?.width || 0,
                         height: this.product.dimensions?.height || 0,
@@ -144,13 +157,13 @@ export default {
                 }
             } else {
                 this.form = this.getEmptyForm()
-
-                // ✅ Если передана категория по умолчанию, добавляем её в форму
                 if (defaultCategoryId) {
                     this.form.categories.push(defaultCategoryId)
                 }
             }
         },
+
+
 
         show(defaultCategoryId = null) {
             this.isLoading = true
@@ -198,21 +211,18 @@ export default {
         buildFormData(formData) {
             const payload = new FormData()
 
-            // Основные поля
             payload.append('name', formData.name)
             payload.append('sku', formData.sku || '')
             payload.append('description', formData.description || '')
             payload.append('price', formData.price || 0)
             payload.append('old_price', formData.old_price || 0)
 
-            // Категории
-            if (formData.categories && formData.categories.length > 0) {
+            if (formData.categories?.length > 0) {
                 formData.categories.forEach((catId, i) => {
                     payload.append(`categories[${i}]`, catId)
                 })
             }
 
-            // Габариты
             if (formData.dimensions) {
                 payload.append('dimensions[width]', formData.dimensions.width || 0)
                 payload.append('dimensions[height]', formData.dimensions.height || 0)
@@ -220,27 +230,31 @@ export default {
                 payload.append('dimensions[weight]', formData.dimensions.weight || 0)
             }
 
-            // Изображения
-            if (formData.images && formData.images.length > 0) {
+            if (formData.images?.length > 0) {
                 formData.images.forEach((img, i) => {
                     if (img.file) {
-                        // Новый файл
                         payload.append(`images[${i}]`, img.file)
                     } else if (img.preview) {
-                        // Существующий URL
                         payload.append(`images_existing[${i}]`, img.preview)
                     }
                 })
             }
 
-            // Атрибуты
-            if (formData.attributes && formData.attributes.length > 0) {
+            if (formData.attributes?.length > 0) {
                 payload.append('attributes', JSON.stringify(formData.attributes))
             }
 
-            // Ингредиенты
-            if (formData.ingredients && formData.ingredients.length > 0) {
-                payload.append('ingredients', JSON.stringify(formData.ingredients))
+            // 🔥 Отправляем группы с ингредиентами
+            if (formData.ingredient_groups?.length > 0) {
+                payload.append('ingredient_groups', JSON.stringify(formData.ingredient_groups))
+            }
+
+            if (formData.components?.length > 0) {
+                payload.append('components', JSON.stringify(formData.components.map(c => ({
+                    id: c.id,
+                    quantity: c.quantity,
+                    is_default: c.is_default || false,
+                }))))
             }
 
             return payload

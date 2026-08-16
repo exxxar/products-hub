@@ -28,8 +28,6 @@
             </button>
         </div>
 
-
-
         <!-- MAIN TAB -->
         <div v-if="tab === 'main'" class="tab-content">
             <div class="form-section">
@@ -115,7 +113,8 @@
                             class="form-input"
                             placeholder="0.00"
                         />
-                        <div v-if="localForm.old_price && localForm.old_price > localForm.price" class="field-hint success">
+                        <div v-if="localForm.old_price && localForm.old_price > localForm.price"
+                             class="field-hint success">
                             <i class="fa-solid fa-tag"></i>
                             Скидка {{ discountPercent }}%
                         </div>
@@ -308,7 +307,7 @@
                         @drop.prevent="onImageDropReorder(i)"
                         @dragend="onImageDragEnd"
                     >
-                        <img :src="img.preview" :alt="img.name" class="image-preview" />
+                        <img :src="img.preview" :alt="img.name" class="image-preview"/>
 
                         <div v-if="i === 0" class="primary-badge">
                             <i class="fa-solid fa-star"></i>
@@ -403,41 +402,226 @@
                 <div class="section-header-with-action">
                     <h6 class="section-title">
                         <i class="fa-solid fa-blender"></i>
-                        Ингредиенты
+                        Ингредиенты этого товара
                     </h6>
-                    <button type="button" class="btn-add" @click="$emit('add-ingredient-group')">
+                    <button type="button" class="btn-add" @click="addingGroup = !addingGroup">
                         <i class="fa-solid fa-plus"></i>
-                        Группа ингредиентов
+                        {{ addingGroup ? 'Отмена' : 'Новая группа' }}
                     </button>
                 </div>
 
-                <div v-if="store.ingredientGroups.length === 0" class="empty-state">
-                    <i class="fa-solid fa-inbox"></i>
-                    <p>Группы ингредиентов не созданы</p>
+                <p class="text-muted small mb-3">
+                    Добавьте группы модификаторов (например: "Размер", "Соусы", "Добавки") и варианты внутри них.
+                </p>
+
+                <!-- Форма создания группы -->
+                <div v-if="addingGroup" class="new-group-form">
+                    <div class="form-row">
+                        <div class="form-group required">
+                            <label class="form-label">Название группы</label>
+                            <input
+                                v-focus
+                                v-model="newGroupName"
+                                type="text"
+                                class="form-input"
+                                placeholder="Например: Соусы, Добавки, Размер..."
+                                @keyup.enter="addGroup"
+                            />
+                        </div>
+                    </div>
+                    <button type="button" class="btn-save" style="padding: 6px 14px; font-size: 13px;"
+                            @click="addGroup">
+                        <i class="fa-solid fa-check"></i> Создать группу
+                    </button>
                 </div>
 
+                <!-- Пустое состояние -->
+                <div v-if="localForm.ingredient_groups.length === 0 && !addingGroup" class="empty-state">
+                    <i class="fa-solid fa-inbox"></i>
+                    <p>Группы ингредиентов не добавлены</p>
+                </div>
+
+                <!-- Список групп -->
                 <div v-else class="ingredient-groups">
                     <div
-                        v-for="group in store.ingredientGroups"
-                        :key="group.id"
+                        v-for="(group, groupIndex) in localForm.ingredient_groups"
+                        :key="groupIndex"
                         class="ingredient-group"
                     >
-                        <h6 class="group-title">{{ group.name }}</h6>
-
-                        <div class="ingredient-list">
-                            <label
-                                v-for="ing in group.ingredients"
-                                :key="ing.id"
-                                class="ingredient-checkbox"
-                            >
+                        <div class="group-header">
+                            <div class="group-title-wrapper">
                                 <input
-                                    type="checkbox"
-                                    :value="ing.id"
-                                    v-model="localForm.ingredients"
-                                    class="checkbox-input"
+                                    v-model="group.name"
+                                    type="text"
+                                    class="form-input group-name-input"
+                                    placeholder="Название группы"
                                 />
-                                <span class="checkbox-label">{{ ing.name }}</span>
-                            </label>
+                                <span class="group-count">{{ group.ingredients?.length || 0 }} шт.</span>
+                            </div>
+                            <div class="group-actions">
+                                <button type="button" class="btn-icon" @click="moveGroupUp(groupIndex)" :disabled="groupIndex === 0" title="Вверх">
+                                    <i class="fa-solid fa-arrow-up"></i>
+                                </button>
+                                <button type="button" class="btn-icon" @click="moveGroupDown(groupIndex)" :disabled="groupIndex === localForm.ingredient_groups.length - 1" title="Вниз">
+                                    <i class="fa-solid fa-arrow-down"></i>
+                                </button>
+                                <button type="button" class="btn-icon btn-icon-danger" @click="removeGroup(groupIndex)" title="Удалить группу">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Форма создания ингредиента -->
+                        <div v-if="addingIngredientForGroup === groupIndex" class="add-ingredient-form">
+                            <div class="form-row">
+                                <input
+                                    v-focus
+                                    v-model="newIngredientName"
+                                    type="text"
+                                    class="form-input"
+                                    placeholder="Название ингредиента..."
+                                    @keyup.enter="addIngredient(groupIndex)"
+                                />
+                            </div>
+                            <div class="form-row two-cols">
+                                <input
+                                    v-model.number="newIngredientPrice"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-input"
+                                    placeholder="Доп. цена (₽)"
+                                />
+                                <label class="switch-label" style="padding-top: 10px;">
+                                    <input v-model="newIngredientDefault" type="checkbox" class="switch-input" />
+                                    <span class="switch-text">Выбран по умолчанию</span>
+                                </label>
+                            </div>
+                            <div class="add-ingredient-actions">
+                                <button type="button" class="btn-save" style="padding: 6px 14px; font-size: 13px;"
+                                        @click="addIngredient(groupIndex)">
+                                    <i class="fa-solid fa-check"></i> Добавить
+                                </button>
+                                <button type="button" class="btn-cancel" style="padding: 6px 14px; font-size: 13px;"
+                                        @click="addingIngredientForGroup = null">
+                                    Отмена
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Список ингредиентов -->
+                        <div v-if="group.ingredients && group.ingredients.length > 0" class="ingredient-list">
+                            <div
+                                v-for="(ing, ingIndex) in group.ingredients"
+                                :key="ingIndex"
+                                class="ingredient-item"
+                            >
+                                <div class="ingredient-main">
+                                    <input
+                                        v-model="ing.name"
+                                        type="text"
+                                        class="form-input ingredient-name-input"
+                                        placeholder="Название"
+                                    />
+                                    <input
+                                        v-model.number="ing.extra_price"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        class="form-input ingredient-price-input"
+                                        placeholder="+ ₽"
+                                    />
+                                    <label class="switch-label">
+                                        <input v-model="ing.is_default" type="checkbox" class="switch-input" />
+                                        <span class="switch-text-sm">По умолч.</span>
+                                    </label>
+                                </div>
+                                <div class="ingredient-actions">
+                                    <button type="button" class="btn-icon" @click="moveIngredientUp(groupIndex, ingIndex)" :disabled="ingIndex === 0" title="Вверх">
+                                        <i class="fa-solid fa-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn-icon" @click="moveIngredientDown(groupIndex, ingIndex)" :disabled="ingIndex === group.ingredients.length - 1" title="Вниз">
+                                        <i class="fa-solid fa-arrow-down"></i>
+                                    </button>
+                                    <button type="button" class="btn-icon btn-icon-danger" @click="removeIngredient(groupIndex, ingIndex)" title="Удалить">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-group-hint">
+                            В этой группе пока нет ингредиентов
+                        </div>
+
+                        <button type="button" class="btn-add-group-ing mt-2" @click="toggleAddIngredient(groupIndex)">
+                            <i class="fa-solid fa-plus"></i>
+                            Добавить ингредиент
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMPONENTS TAB -->
+        <div v-if="tab === 'components'" class="tab-content">
+            <div class="form-section">
+                <div class="section-header-with-action">
+                    <h6 class="section-title">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                        Составные части (Комплект)
+                    </h6>
+                </div>
+                <p class="text-muted small mb-3">Добавьте товары, которые входят в состав этого комплекта.</p>
+
+                <!-- Dropdown для добавления товара -->
+                <div class="category-dropdown mb-4">
+                    <button type="button" class="dropdown-trigger" @click="showProductDropdown = !showProductDropdown">
+                        <i class="fa-solid fa-plus"></i>
+                        Добавить товар в состав
+                    </button>
+
+                    <div v-if="showProductDropdown" class="dropdown-panel">
+                        <input v-model="productSearch" type="text" class="form-input" placeholder="Поиск товара..."
+                               @click.stop/>
+                        <div class="dropdown-list">
+                            <button v-for="p in filteredProducts" :key="p.id" type="button" class="dropdown-item"
+                                    @click="addComponent(p.id)">
+                                <i class="fa-solid fa-box"></i>
+                                {{ p.name }}
+                            </button>
+                        </div>
+                        <div v-if="filteredProducts.length === 0 && productSearch"
+                             class="dropdown-footer text-muted small text-center p-2">
+                            Товары не найдены
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Список добавленных товаров -->
+                <div v-if="localForm.components.length === 0" class="empty-state">
+                    <i class="fa-solid fa-box-open"></i>
+                    <p>Состав пока пуст</p>
+                </div>
+
+                <div v-else class="components-list">
+                    <div v-for="(comp, i) in localForm.components" :key="comp.id" class="attribute-card component-card">
+                        <div class="component-info">
+                            <i class="fa-solid fa-box text-primary"></i>
+                            <span class="component-name">{{ comp.name }}</span>
+                        </div>
+                        <div class="component-actions">
+                            <label class="quantity-label">Кол-во:</label>
+                            <input
+                                type="number"
+                                min="1"
+                                class="form-input quantity-input"
+                                :value="comp.quantity"
+                                @input="updateComponentQuantity(i, parseInt($event.target.value) || 1)"
+                            />
+                            <button type="button" class="btn-remove" @click="removeComponent(i)"
+                                    title="Удалить из состава">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -454,11 +638,36 @@
                 Сохранить товар
             </button>
         </div>
+
+        <!-- Модалки подтверждения -->
+        <ConfirmModal
+            v-model:show="showDeleteGroupConfirm"
+            title="Удалить группу?"
+            description="Все ингредиенты этой группы будут удалены."
+            warning="Это действие нельзя отменить."
+            type="danger"
+            confirm-text="Удалить"
+            @accept="confirmRemoveGroup"
+        />
+
+        <ConfirmModal
+            v-model:show="showDeleteIngredientConfirm"
+            title="Удалить ингредиент?"
+            :description="`Ингредиент '${ingredientToDelete?.name}' будет удален.`"
+            type="danger"
+            confirm-text="Удалить"
+            @accept="confirmRemoveIngredient"
+        />
     </div>
 </template>
 
 <script>
-import { useWorkspaceStore } from '@/store/workspace.js'
+import {useWorkspaceStore} from '@/store/workspace.js'
+import ConfirmModal from "@/Components/Layout/ConfirmModal.vue";
+
+const vFocus = {
+    mounted: (el) => el.focus()
+}
 
 export default {
     name: 'ProductForm',
@@ -470,8 +679,9 @@ export default {
         }
     },
 
-    emits: ['save', 'cancel', 'create-category', 'add-ingredient-group'],
+    emits: ['save', 'cancel', 'create-category'],
 
+    components: {ConfirmModal},
 
     data() {
         return {
@@ -486,12 +696,33 @@ export default {
             imageError: '',
             errors: {},
 
+            // Группы и ингредиенты
+            addingGroup: false,
+            newGroupName: '',
+            addingIngredientForGroup: null,
+            newIngredientName: '',
+            newIngredientPrice: 0,
+            newIngredientDefault: false,
+
+            // Составные товары
+            productSearch: '',
+            showProductDropdown: false,
+
             tabs: [
-                { key: 'main', label: 'Основное', icon: 'fa-solid fa-info-circle' },
-                { key: 'images', label: 'Изображения', icon: 'fa-solid fa-images', count: 0 },
-                { key: 'attributes', label: 'Свойства', icon: 'fa-solid fa-list-check', count: 0 },
-                { key: 'ingredients', label: 'Ингредиенты', icon: 'fa-solid fa-blender', count: 0 }
-            ]
+                {key: 'main', label: 'Основное', icon: 'fa-solid fa-info-circle'},
+                {key: 'images', label: 'Изображения', icon: 'fa-solid fa-images', count: 0},
+                {key: 'attributes', label: 'Свойства', icon: 'fa-solid fa-list-check', count: 0},
+                {key: 'ingredients', label: 'Ингредиенты', icon: 'fa-solid fa-blender', count: 0},
+                {key: 'components', label: 'Состав', icon: 'fa-solid fa-boxes-stacked', count: 0}
+            ],
+
+            // Модалки удаления
+            showDeleteGroupConfirm: false,
+            groupToDeleteIndex: null,
+            showDeleteIngredientConfirm: false,
+            ingredientToDelete: null,
+            ingredientToDeleteGroupIndex: null,
+            ingredientToDeleteIndex: null,
         }
     },
 
@@ -502,6 +733,14 @@ export default {
             handler(newForm) {
                 if (newForm) {
                     this.localForm = JSON.parse(JSON.stringify(newForm))
+
+                    // Страховка массивов
+                    if (!Array.isArray(this.localForm.categories)) this.localForm.categories = [];
+                    if (!Array.isArray(this.localForm.attributes)) this.localForm.attributes = [];
+                    if (!Array.isArray(this.localForm.images)) this.localForm.images = [];
+                    if (!Array.isArray(this.localForm.components)) this.localForm.components = [];
+                    if (!Array.isArray(this.localForm.ingredient_groups)) this.localForm.ingredient_groups = [];
+
                     this.needDimensions = !!(
                         this.localForm.dimensions?.width ||
                         this.localForm.dimensions?.height ||
@@ -512,26 +751,10 @@ export default {
             }
         },
 
-        'localForm.images': {
-            handler() {
-                this.updateTabCounts()
-            },
-            deep: true
-        },
-
-        'localForm.attributes': {
-            handler() {
-                this.updateTabCounts()
-            },
-            deep: true
-        },
-
-        'localForm.ingredients': {
-            handler() {
-                this.updateTabCounts()
-            },
-            deep: true
-        }
+        'localForm.images': { handler() { this.updateTabCounts() }, deep: true },
+        'localForm.attributes': { handler() { this.updateTabCounts() }, deep: true },
+        'localForm.ingredient_groups': { handler() { this.updateTabCounts() }, deep: true },
+        'localForm.components': { handler() { this.updateTabCounts() }, deep: true },
     },
 
     computed: {
@@ -546,6 +769,17 @@ export default {
             )
         },
 
+        filteredProducts() {
+            const q = this.productSearch?.toLowerCase() || '';
+            const products = this.store.products || [];
+
+            return products.filter(p => {
+                if (this.isEditMode && p.id === this.localForm.id) return false;
+                if (this.localForm.components.some(c => c.id === p.id)) return false;
+                return p.name.toLowerCase().includes(q);
+            });
+        },
+
         discountPercent() {
             if (!this.localForm.old_price || !this.localForm.price) return 0
             const discount = ((this.localForm.old_price - this.localForm.price) / this.localForm.old_price) * 100
@@ -556,22 +790,143 @@ export default {
     mounted() {
         this.updateTabCounts()
     },
+
     methods: {
-        // === Заполнение тестовыми данными ===
+        // === Группы ингредиентов ===
+        addGroup() {
+            if (!this.newGroupName.trim()) return;
+
+            this.localForm.ingredient_groups.push({
+                id: null,
+                name: this.newGroupName.trim(),
+                sort_order: this.localForm.ingredient_groups.length,
+                ingredients: [],
+            });
+
+            this.newGroupName = '';
+            this.addingGroup = false;
+        },
+
+        removeGroup(index) {
+            this.groupToDeleteIndex = index;
+            this.showDeleteGroupConfirm = true;
+        },
+
+        confirmRemoveGroup() {
+            if (this.groupToDeleteIndex !== null) {
+                this.localForm.ingredient_groups.splice(this.groupToDeleteIndex, 1);
+            }
+            this.groupToDeleteIndex = null;
+            this.showDeleteGroupConfirm = false;
+        },
+
+        moveGroupUp(index) {
+            if (index === 0) return;
+            const groups = this.localForm.ingredient_groups;
+            [groups[index - 1], groups[index]] = [groups[index], groups[index - 1]];
+        },
+
+        moveGroupDown(index) {
+            const groups = this.localForm.ingredient_groups;
+            if (index >= groups.length - 1) return;
+            [groups[index], groups[index + 1]] = [groups[index + 1], groups[index]];
+        },
+
+        // === Ингредиенты ===
+        toggleAddIngredient(groupIndex) {
+            if (this.addingIngredientForGroup === groupIndex) {
+                this.addingIngredientForGroup = null;
+            } else {
+                this.addingIngredientForGroup = groupIndex;
+                this.newIngredientName = '';
+                this.newIngredientPrice = 0;
+                this.newIngredientDefault = false;
+            }
+        },
+
+        addIngredient(groupIndex) {
+            if (!this.newIngredientName.trim()) return;
+
+            const group = this.localForm.ingredient_groups[groupIndex];
+            group.ingredients.push({
+                id: null,
+                name: this.newIngredientName.trim(),
+                extra_price: this.newIngredientPrice || 0,
+                is_default: this.newIngredientDefault,
+                sort_order: group.ingredients.length,
+            });
+
+            this.newIngredientName = '';
+            this.newIngredientPrice = 0;
+            this.newIngredientDefault = false;
+            this.addingIngredientForGroup = null;
+        },
+
+        removeIngredient(groupIndex, ingIndex) {
+            this.ingredientToDeleteGroupIndex = groupIndex;
+            this.ingredientToDeleteIndex = ingIndex;
+            this.ingredientToDelete = this.localForm.ingredient_groups[groupIndex].ingredients[ingIndex];
+            this.showDeleteIngredientConfirm = true;
+        },
+
+        confirmRemoveIngredient() {
+            if (this.ingredientToDeleteGroupIndex !== null && this.ingredientToDeleteIndex !== null) {
+                this.localForm.ingredient_groups[this.ingredientToDeleteGroupIndex]
+                    .ingredients.splice(this.ingredientToDeleteIndex, 1);
+            }
+            this.ingredientToDeleteGroupIndex = null;
+            this.ingredientToDeleteIndex = null;
+            this.ingredientToDelete = null;
+            this.showDeleteIngredientConfirm = false;
+        },
+
+        moveIngredientUp(groupIndex, ingIndex) {
+            if (ingIndex === 0) return;
+            const ingredients = this.localForm.ingredient_groups[groupIndex].ingredients;
+            [ingredients[ingIndex - 1], ingredients[ingIndex]] = [ingredients[ingIndex], ingredients[ingIndex - 1]];
+        },
+
+        moveIngredientDown(groupIndex, ingIndex) {
+            const ingredients = this.localForm.ingredient_groups[groupIndex].ingredients;
+            if (ingIndex >= ingredients.length - 1) return;
+            [ingredients[ingIndex], ingredients[ingIndex + 1]] = [ingredients[ingIndex + 1], ingredients[ingIndex]];
+        },
+
+        // === Составные товары ===
+        addComponent(productId) {
+            const product = (this.store.products || []).find(p => p.id === productId);
+            if (product) {
+                this.localForm.components.push({
+                    id: product.id,
+                    name: product.name,
+                    quantity: 1
+                });
+            }
+            this.productSearch = '';
+            this.showProductDropdown = false;
+        },
+
+        removeComponent(index) {
+            this.localForm.components.splice(index, 1);
+        },
+
+        updateComponentQuantity(index, quantity) {
+            if (quantity < 1) quantity = 1;
+            this.localForm.components[index].quantity = quantity;
+        },
+
+        // === Тестовые данные ===
         fillWithTestData() {
-            // Основные поля
             this.localForm.name = 'Кроссовки Nike Air Max 90'
             this.localForm.sku = 'NK-AM90-2024-BLK'
-            this.localForm.description = 'Легендарные кроссовки Nike Air Max 90 в классическом черном цвете. Идеальное сочетание стиля и комфорта для повседневной носки. Амортизирующая подошва Air Max обеспечивает превосходную поддержку стопы.'
+            this.localForm.description = 'Легендарные кроссовки Nike Air Max 90 в классическом черном цвете.'
             this.localForm.price = 12990
             this.localForm.old_price = 15990
 
-            // Категории (выбираем первые 2 если есть)
             if (this.store.categories.length > 0) {
                 this.localForm.categories = this.store.categories.slice(0, 2).map(c => c.id)
             }
 
-            // Габариты
             this.needDimensions = true
             this.localForm.dimensions = {
                 width: 32,
@@ -580,7 +935,6 @@ export default {
                 weight: 0.85
             }
 
-            // Изображения (используем placeholder сервисы)
             this.localForm.images = [
                 {
                     file: null,
@@ -591,40 +945,50 @@ export default {
                     file: null,
                     preview: 'https://picsum.photos/seed/nike2/400/400',
                     name: 'nike-side.jpg'
+                }
+            ]
+
+            this.localForm.attributes = [
+                {name: 'Бренд', value: 'Nike'},
+                {name: 'Цвет', value: 'Черный'},
+                {name: 'Материал', value: 'Кожа, текстиль'}
+            ]
+
+            // Тестовые группы ингредиентов
+            this.localForm.ingredient_groups = [
+                {
+                    id: null,
+                    name: 'Размер',
+                    sort_order: 0,
+                    ingredients: [
+                        {id: null, name: '40', extra_price: 0, is_default: true, sort_order: 0},
+                        {id: null, name: '41', extra_price: 0, is_default: false, sort_order: 1},
+                        {id: null, name: '42', extra_price: 0, is_default: false, sort_order: 2}
+                    ]
                 },
                 {
-                    file: null,
-                    preview: 'https://picsum.photos/seed/nike3/400/400',
-                    name: 'nike-back.jpg'
+                    id: null,
+                    name: 'Добавки',
+                    sort_order: 1,
+                    ingredients: [
+                        {id: null, name: 'Шнурки', extra_price: 200, is_default: false, sort_order: 0},
+                        {id: null, name: 'Стельки', extra_price: 500, is_default: false, sort_order: 1}
+                    ]
                 }
             ]
 
-            // Атрибуты
-            this.localForm.attributes = [
-                { name: 'Бренд', value: 'Nike' },
-                { name: 'Цвет', value: 'Черный' },
-                { name: 'Материал', value: 'Кожа, текстиль' },
-                { name: 'Сезон', value: 'Весна/Лето' },
-                { name: 'Страна производства', value: 'Вьетнам' }
-            ]
-
-            // Ингредиенты (если есть в store)
-            if (this.store.ingredientGroups.length > 0) {
-                const firstGroup = this.store.ingredientGroups[0]
-                if (firstGroup.ingredients && firstGroup.ingredients.length > 0) {
-                    this.localForm.ingredients = firstGroup.ingredients.slice(0, 3).map(i => i.id)
-                }
+            if (this.store.products && this.store.products.length > 1) {
+                this.localForm.components = [
+                    {id: this.store.products[0].id, name: this.store.products[0].name, quantity: 1},
+                    {id: this.store.products[1].id, name: this.store.products[1].name, quantity: 2}
+                ];
             }
 
-            // Обновляем счетчики
             this.updateTabCounts()
-
-            // Показываем уведомление (опционально)
             this.showToast('Форма заполнена тестовыми данными')
         },
 
         showToast(message) {
-            // Простое уведомление
             const toast = document.createElement('div')
             toast.className = 'test-data-toast'
             toast.innerHTML = `<i class="fa-solid fa-check-circle"></i> ${message}`
@@ -642,24 +1006,12 @@ export default {
             }, 2000)
         },
 
+        // === Категории ===
         getCategoryName(catId) {
             const cat = this.store.categories.find(c => c.id === catId)
             return cat?.name || 'Неизвестная категория'
         },
 
-        updateTabCounts() {
-            const imagesTab = this.tabs.find(t => t.key === 'images')
-            if (imagesTab) imagesTab.count = this.localForm?.images?.length || 0
-
-            const attrsTab = this.tabs.find(t => t.key === 'attributes')
-            if (attrsTab) attrsTab.count = this.localForm?.attributes?.length || 0
-
-            const ingTab = this.tabs.find(t => t.key === 'ingredients')
-            if (ingTab) ingTab.count = this.localForm?.ingredients?.length || 0
-        },
-
-
-        // === Categories ===
         addCategory(id) {
             if (!this.localForm.categories.includes(id)) {
                 this.localForm.categories.push(id)
@@ -680,14 +1032,31 @@ export default {
             this.showCategoryDropdown = false
         },
 
-        // === Images ===
+        updateTabCounts() {
+            const imagesTab = this.tabs.find(t => t.key === 'images')
+            if (imagesTab) imagesTab.count = this.localForm?.images?.length || 0
+
+            const attrsTab = this.tabs.find(t => t.key === 'attributes')
+            if (attrsTab) attrsTab.count = this.localForm?.attributes?.length || 0
+
+            const ingTab = this.tabs.find(t => t.key === 'ingredients')
+            if (ingTab) {
+                ingTab.count = (this.localForm?.ingredient_groups || [])
+                    .reduce((sum, g) => sum + (g.ingredients?.length || 0), 0);
+            }
+
+            const compTab = this.tabs.find(t => t.key === 'components')
+            if (compTab) compTab.count = this.localForm?.components?.length || 0
+        },
+
+        // === Изображения ===
         triggerFileInput() {
             this.$refs.fileInput.click()
         },
 
         onImagesChange(e) {
             this.processFiles(Array.from(e.target.files))
-            e.target.value = '' // Reset input
+            e.target.value = ''
         },
 
         onImageDrop(e) {
@@ -701,13 +1070,11 @@ export default {
             const validFiles = []
 
             for (const file of files) {
-                // Validate file type
                 if (!file.type.startsWith('image/')) {
                     this.imageError = `Файл "${file.name}" не является изображением`
                     continue
                 }
 
-                // Validate file size (5MB)
                 if (file.size > 5 * 1024 * 1024) {
                     this.imageError = `Файл "${file.name}" слишком большой (макс. 5MB)`
                     continue
@@ -729,7 +1096,7 @@ export default {
         removeImage(i) {
             const img = this.localForm.images[i]
             if (img.preview) {
-                URL.revokeObjectURL(img.preview) // Free memory
+                URL.revokeObjectURL(img.preview)
             }
             this.localForm.images.splice(i, 1)
         },
@@ -744,7 +1111,7 @@ export default {
         },
 
         onImageDragOver(i) {
-            // Visual feedback could be added here
+            // Visual feedback
         },
 
         onImageDropReorder(i) {
@@ -759,16 +1126,16 @@ export default {
             this.draggedImageIndex = null
         },
 
-        // === Attributes ===
+        // === Атрибуты ===
         addAttribute() {
-            this.localForm.attributes.push({ name: '', value: '' })
+            this.localForm.attributes.push({name: '', value: ''})
         },
 
         removeAttribute(i) {
             this.localForm.attributes.splice(i, 1)
         },
 
-        // === Validation & Save ===
+        // === Валидация и сохранение ===
         validate() {
             this.errors = {}
 
@@ -789,12 +1156,11 @@ export default {
                 return
             }
 
-            this.$emit('save', { ...this.localForm })
-        }
+            this.$emit('save', {...this.localForm})
+        },
     },
 
     beforeUnmount() {
-        // Clean up object URLs
         if (this.localForm?.images) {
             this.localForm.images.forEach(img => {
                 if (img.preview) {
@@ -807,7 +1173,7 @@ export default {
 </script>
 
 <style scoped>
-/* === Header с кнопкой === */
+/* === Header === */
 .form-header {
     display: flex;
     justify-content: flex-end;
@@ -841,7 +1207,7 @@ export default {
     font-size: 14px;
 }
 
-/* === Toast уведомление === */
+/* === Toast === */
 :global(.test-data-toast) {
     position: fixed;
     top: 20px;
@@ -869,7 +1235,6 @@ export default {
 :global(.test-data-toast i) {
     font-size: 16px;
 }
-
 
 /* === Tabs === */
 .form-tabs {
@@ -1443,36 +1808,152 @@ export default {
     background: #f8f9fa;
 }
 
-.group-title {
-    font-size: 14px;
+.group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.group-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.group-name-input {
     font-weight: 600;
+    font-size: 15px;
+    flex: 1;
+    max-width: 300px;
+}
+
+.group-count {
+    padding: 2px 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
     color: #495057;
-    margin: 0 0 12px 0;
+}
+
+.group-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
 }
 
 .ingredient-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.ingredient-checkbox {
+.ingredient-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.ingredient-item:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+}
+
+.ingredient-main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 120px auto;
     gap: 8px;
-    cursor: pointer;
+    align-items: center;
 }
 
-.checkbox-input {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.checkbox-label {
+.ingredient-name-input,
+.ingredient-price-input {
+    padding: 6px 10px;
     font-size: 13px;
+}
+
+.ingredient-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    margin-left: 12px;
+}
+
+.ingredient-item:hover .ingredient-actions {
+    opacity: 1;
+}
+
+.switch-text-sm {
+    font-size: 12px;
     color: #495057;
 }
+
+.btn-add-group-ing {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px dashed #0d6efd;
+    border-radius: 6px;
+    background: transparent;
+    color: #0d6efd;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-add-group-ing:hover {
+    background: #0d6efd;
+    color: #fff;
+}
+
+.add-ingredient-form {
+    background: #e7f1ff;
+    border: 1px solid #0d6efd;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    animation: fadeIn 0.2s ease;
+}
+
+.add-ingredient-form .form-row {
+    margin-bottom: 8px;
+}
+
+.add-ingredient-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.empty-group-hint {
+    font-size: 12px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.new-group-form {
+    background: #fff3cd;
+    border: 1px dashed #ffc107;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+.new-group-form .form-row {
+    margin-bottom: 12px;
+}
+
+.mt-2 { margin-top: 8px; }
 
 /* === Buttons === */
 .btn-add {
@@ -1493,6 +1974,37 @@ export default {
 .btn-add:hover {
     background: #0d6efd;
     color: #fff;
+}
+
+.btn-icon {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.btn-icon:hover:not(:disabled) {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.btn-icon:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.btn-icon-danger:hover:not(:disabled) {
+    background: #dc3545;
+    border-color: #dc3545;
 }
 
 /* === Empty state === */
@@ -1561,6 +2073,55 @@ export default {
     box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
 }
 
+/* === Components === */
+.components-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.component-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.component-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 500;
+    color: #212529;
+    overflow: hidden;
+}
+
+.component-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.component-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.quantity-label {
+    font-size: 13px;
+    color: #6c757d;
+    white-space: nowrap;
+    margin: 0;
+}
+
+.quantity-input {
+    width: 70px;
+    text-align: center;
+    padding: 6px 8px;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .form-row.two-cols {
@@ -1581,6 +2142,10 @@ export default {
 
     .tab-btn {
         padding: 10px 12px;
+    }
+
+    .ingredient-main {
+        grid-template-columns: 1fr;
     }
 }
 

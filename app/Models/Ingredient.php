@@ -2,21 +2,27 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Ingredient extends Model
 {
     protected $fillable = [
-        'workspace_id', 'group_id', 'name', 'image_url', 'is_active'
+        'group_id',
+        'name',
+        'extra_price',
+        'is_default',
+        'sort_order',
     ];
 
-    public function workspace() {
-        return $this->belongsTo(Workspace::class);
-    }
+    protected $casts = [
+        'extra_price' => 'decimal:2',
+        'is_default' => 'boolean',
+        'sort_order' => 'integer',
+    ];
 
-    public function group() {
+    public function group(): BelongsTo
+    {
         return $this->belongsTo(IngredientGroup::class, 'group_id');
     }
 }
-

@@ -2,20 +2,29 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class IngredientGroup extends Model
 {
     protected $fillable = [
-        'workspace_id', 'name', 'selection_type', 'min', 'max'
+        'product_id',
+        'name',
+        'sort_order',
     ];
 
-    public function workspace() {
-        return $this->belongsTo(Workspace::class);
+    protected $casts = [
+        'sort_order' => 'integer',
+    ];
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
     }
 
-    public function ingredients() {
-        return $this->hasMany(Ingredient::class, 'group_id');
+    public function ingredients(): HasMany
+    {
+        return $this->hasMany(Ingredient::class, 'group_id')->orderBy('sort_order');
     }
 }

@@ -120,26 +120,24 @@ class Webhook extends Model
         $workspace = $this->workspace;
 
         if ($product) {
-            // Обновление одного товара: 1 товар + все коллекции, к которым он привязан
-            $product->loadMissing('collections');
+            $product->loadMissing(['collections', 'components']);
 
             return [
-                'products_count' => 1,
-                'collections_count' => $product->collections->count(), // свойство, не метод
+                'products_count' => 1 + ($product->components ? $product->components->count() : 0),
+                'collections_count' => $product->collections->count(),
                 'event' => 'product.updated',
             ];
         }
 
-        // Полная синхронизация воркспейса
-        // Загружаем коллекции явно, чтобы получить Collection, а не Query Builder
         $workspace->loadMissing('collections');
 
         return [
             'products_count' => $workspace->products_count ?? $workspace->products()->count(),
-            'collections_count' => $workspace->collections->count(), // свойство, не метод
+            'collections_count' => $workspace->collections->count(),
             'event' => 'workspace.sync',
         ];
     }
+
     /**
      * Сформировать payload для вебхука
      */
@@ -149,7 +147,13 @@ class Webhook extends Model
             $workspace = $this->workspace;
 
             if ($product) {
-                $product->loadMissing(['categories', 'attributes', 'ingredients', 'collections']);
+                $product->loadMissing([
+                    'categories',
+                    'attributes',
+                    'ingredientGroups.ingredients', // 🔥 Новые группы ингредиентов
+                    'components',                    // 🔥 Составные товары
+                    'collections'
+                ]);
 
                 return [
                     'event' => 'product.updated',
@@ -161,8 +165,6 @@ class Webhook extends Model
                     ],
                     'data' => [
                         'product' => $this->buildProductData($product),
-                        // ✅ Передаем коллекции, к которым привязан обновленный товар,
-                        // чтобы принимающая сторона могла пересчитать цены наборов
                         'collections' => collect($product->collections ?? [])->map(function ($c) {
                             return $this->buildCollectionData($c);
                         })->values()->all()
@@ -173,7 +175,8 @@ class Webhook extends Model
                 $workspace->loadMissing([
                     'products.categories',
                     'products.attributes',
-                    'products.ingredients',
+                    'products.ingredientGroups.ingredients', // 🔥 Новые группы ингредиентов
+                    'products.components',                    // 🔥 Составные товары
                     'products.collections',
                     'collections.collectionCategories.products',
                     'collections.collectionCategories.category',
@@ -190,7 +193,6 @@ class Webhook extends Model
                         'products' => collect($workspace->products ?? [])->map(function ($p) {
                             return $this->buildProductData($p);
                         })->values()->all(),
-                        // ✅ Передаем ВСЕ коллекции воркспейса
                         'collections' => collect($workspace->collections ?? [])->map(function ($c) {
                             return $this->buildCollectionData($c);
                         })->values()->all()
@@ -221,7 +223,7 @@ class Webhook extends Model
      */
     protected function buildProductData(Product $product): array
     {
-        $product->loadMissing('collections');
+        $product->loadMissing(['collections', 'ingredientGroups.ingredients', 'components']);
 
         return [
             'id' => $product->id,
@@ -231,6 +233,7 @@ class Webhook extends Model
             'old_price' => $product->old_price ? (float) $product->old_price : null,
             'description' => $product->description ?? '',
             'is_active' => (bool) $product->is_active,
+            'is_composite' => (bool) ($product->is_composite ?? false),
             'in_stop_list' => (bool) $product->in_stop_list,
             'categories' => $this->safeMapRelation($product->categories ?? [], function ($c) {
                 return ['id' => $c->id ?? null, 'name' => $c->name ?? ''];
@@ -244,10 +247,39 @@ class Webhook extends Model
             'attributes' => $this->safeMapRelation($product->attributes ?? [], function ($a) {
                 return ['name' => $a->name ?? '', 'value' => $a->value ?? ''];
             }),
-            'ingredients' => $this->safeMapRelation($product->ingredients ?? [], function ($i) {
-                return ['id' => $i->id ?? null, 'name' => $i->name ?? ''];
+
+            // 🔥 НОВАЯ структура: группы ингредиентов с вложенными ингредиентами
+            'ingredient_groups' => $this->safeMapRelation($product->ingredientGroups ?? [], function ($group) {
+                return [
+                    'id' => $group->id ?? null,
+                    'name' => $group->name ?? '',
+                    'sort_order' => $group->sort_order ?? 0,
+                    'ingredients' => $this->safeMapRelation($group->ingredients ?? [], function ($ing) {
+                        return [
+                            'id' => $ing->id ?? null,
+                            'name' => $ing->name ?? '',
+                            'extra_price' => (float) ($ing->extra_price ?? 0),
+                            'is_default' => (bool) ($ing->is_default ?? false),
+                            'sort_order' => $ing->sort_order ?? 0,
+                        ];
+                    })
+                ];
             }),
-            // ✅ Добавили список коллекций, в которых состоит товар
+
+            // 🔥 Составные товары (components)
+            'components' => $this->safeMapRelation($product->components ?? [], function ($comp) {
+                return [
+                    'id' => $comp->id ?? null,
+                    'name' => $comp->name ?? '',
+                    'sku' => $comp->sku ?? '',
+                    'price' => (float) ($comp->price ?? 0),
+                    'quantity' => (int) ($comp->pivot->quantity ?? 1),
+                    'is_default' => (bool) ($comp->pivot->is_default ?? false),
+                    'sort_order' => $comp->pivot->sort_order ?? 0,
+                ];
+            }),
+
+            // Коллекции, в которых состоит товар
             'collections' => $this->safeMapRelation($product->collections ?? [], function ($c) {
                 return [
                     'id' => $c->id ?? null,

@@ -3,6 +3,7 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\IngredientGroupController;
 use App\Http\Controllers\MenuDefaultImageController;
 use App\Http\Controllers\MenuGeneratorController;
 use App\Http\Controllers\PresenceController;
@@ -126,7 +127,6 @@ Route::prefix('workspaces/{uuid}')
             Route::post('/{group}/webhooks', [WorkspaceGroupController::class, 'updateWebhooks']);
             Route::post('/{group}/sync', [WorkspaceGroupController::class, 'sync']);
         });
-
 
         // Товары
         Route::prefix('products')->group(function () {

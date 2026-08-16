@@ -19,9 +19,8 @@ class ProductController extends Controller
         $workspace = App::make('workspace');
 
         $query = $workspace->products()
-            ->with(['categories', 'attributes', 'ingredients']);
+            ->with(['categories', 'attributes', 'ingredientGroups.ingredients', 'components']);
 
-        // Поиск
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -30,7 +29,6 @@ class ProductController extends Controller
             });
         }
 
-        // Фильтры
         if ($request->input('in_stop_list')) {
             $query->where('in_stop_list', true);
         }
@@ -39,10 +37,7 @@ class ProductController extends Controller
             $query->where('is_active', true)->where('in_stop_list', false);
         }
 
-        // Общее количество (для футера)
         $total = $query->count();
-
-        // Пагинация
         $limit = min((int) $request->input('limit', 50), 200);
         $offset = (int) $request->input('offset', 0);
 
@@ -62,7 +57,8 @@ class ProductController extends Controller
 
     protected function decodeJsonFields(Request $request)
     {
-        $jsonFields = ['attributes', 'ingredients', 'variants', 'config'];
+        // 🔥 Добавляем ingredient_groups и components
+        $jsonFields = ['attributes', 'ingredients', 'variants', 'config', 'ingredient_groups', 'components'];
 
         foreach ($jsonFields as $field) {
             $value = $request->input($field);
@@ -75,14 +71,124 @@ class ProductController extends Controller
         }
     }
 
+    private function processImages(Request $request): array
+    {
+        $workspace = App::make('workspace');
+        $images = [];
+
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $image) {
+                $path = $image->store("products/{$workspace->id}", 'public');
+                $images[] = [
+                    'url' => Storage::url($path),
+                    'name' => $image->getClientOriginalName(),
+                    'size' => $image->getSize(),
+                ];
+            }
+        }
+
+        if ($request->has('images_existing')) {
+            foreach ($request->input('images_existing') as $url) {
+                $images[] = [
+                    'url' => $url,
+                    'name' => basename($url),
+                    'size' => null,
+                ];
+            }
+        }
+
+        return $images;
+    }
+
+    private function cleanupImages(array $images): void
+    {
+        foreach ($images as $img) {
+            if (isset($img['url']) && str_contains($img['url'], '/storage/')) {
+                $path = str_replace('/storage/', '', $img['url']);
+                Storage::disk('public')->delete($path);
+            }
+        }
+    }
+
+    private function syncCategories(Product $product, $workspace, array $categoryIds): array
+    {
+        if (empty($categoryIds)) {
+            $product->categories()->detach();
+            return [];
+        }
+
+        $validCategoryIds = $workspace->categories()
+            ->whereIn('id', $categoryIds)
+            ->pluck('id')
+            ->toArray();
+
+        $product->categories()->sync($validCategoryIds);
+        return $validCategoryIds;
+    }
+
+    private function syncAttributes(Product $product, array $attributes): void
+    {
+        $product->attributes()->delete();
+        foreach ($attributes as $attr) {
+            $product->attributes()->create([
+                'name' => $attr['name'],
+                'value' => $attr['value'],
+            ]);
+        }
+    }
+
+    private function syncIngredientGroups(Product $product, array $groups): void
+    {
+        // Удаляем старые группы (каскадно удалятся и ингредиенты)
+        $product->ingredientGroups()->delete();
+
+        foreach ($groups as $groupIndex => $groupData) {
+            $group = $product->ingredientGroups()->create([
+                'name' => $groupData['name'],
+                'sort_order' => $groupData['sort_order'] ?? $groupIndex,
+            ]);
+
+            if (!empty($groupData['ingredients'])) {
+                foreach ($groupData['ingredients'] as $ingIndex => $ingData) {
+                    $group->ingredients()->create([
+                        'name' => $ingData['name'],
+                        'extra_price' => $ingData['extra_price'] ?? 0,
+                        'is_default' => $ingData['is_default'] ?? false,
+                        'sort_order' => $ingData['sort_order'] ?? $ingIndex,
+                    ]);
+                }
+            }
+        }
+    }
+
+    private function syncComponents(Product $product, Request $request): void
+    {
+        $componentsInput = $request->input('components');
+        if (!empty($componentsInput)) {
+            $components = is_string($componentsInput) ? json_decode($componentsInput, true) : $componentsInput;
+            $syncData = [];
+
+            if (is_array($components)) {
+                foreach ($components as $comp) {
+                    if (isset($comp['id'])) {
+                        $syncData[$comp['id']] = [
+                            'quantity' => $comp['quantity'] ?? 1,
+                            'is_default' => $comp['is_default'] ?? false,
+                        ];
+                    }
+                }
+            }
+            $product->components()->sync($syncData);
+        } else {
+            $product->components()->detach();
+        }
+    }
+
     public function store(Request $request)
     {
         $workspace = App::make('workspace');
-
         $this->decodeJsonFields($request);
 
-
-        // Валидация
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:100',
@@ -99,8 +205,6 @@ class ProductController extends Controller
             'attributes' => 'nullable|array',
             'attributes.*.name' => 'required|string|max:255',
             'attributes.*.value' => 'required|string|max:255',
-            'ingredients' => 'nullable|array',
-            'ingredients.*' => 'integer',
             'images' => 'nullable|array',
             'images.*' => 'file|image|max:5120',
             'images_existing' => 'nullable|array',
@@ -110,31 +214,8 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
-            // === Обработка изображений ===
-            $images = [];
+            $images = $this->processImages($request);
 
-            if ($request->hasFile('images')) {
-                foreach ($request->file('images') as $image) {
-                    $path = $image->store("products/{$workspace->id}", 'public');
-                    $images[] = [
-                        'url' => Storage::url($path),
-                        'name' => $image->getClientOriginalName(),
-                        'size' => $image->getSize(),
-                    ];
-                }
-            }
-
-            if ($request->has('images_existing')) {
-                foreach ($request->input('images_existing') as $url) {
-                    $images[] = [
-                        'url' => $url,
-                        'name' => basename($url),
-                        'size' => null,
-                    ];
-                }
-            }
-
-            // === Создание продукта ===
             $product = Product::create([
                 'workspace_id' => $workspace->id,
                 'name' => $validated['name'],
@@ -148,74 +229,22 @@ class ProductController extends Controller
                 'in_stop_list' => false,
             ]);
 
-            // === Синхронизация категорий ===
-            if (!empty($validated['categories'])) {
-                // Проверяем что категории принадлежат workspace
-                $validCategoryIds = $workspace->categories()
-                    ->whereIn('id', $validated['categories'])
-                    ->pluck('id')
-                    ->toArray();
+            $this->syncCategories($product, $workspace, $validated['categories'] ?? []);
+            $this->syncAttributes($product, $validated['attributes'] ?? []);
 
-                \Log::info('Syncing categories', [
-                    'requested' => $validated['categories'],
-                    'valid' => $validCategoryIds
-                ]);
-
-                if (!empty($validCategoryIds)) {
-                    $product->categories()->sync($validCategoryIds);
-                }
-            }
-
-            // === Создание атрибутов ===
-            if (!empty($validated['attributes'])) {
-                foreach ($validated['attributes'] as $attr) {
-                    $product->attributes()->create([
-                        'name' => $attr['name'],
-                        'value' => $attr['value'],
-                    ]);
-                }
-            }
-
-            // === Синхронизация ингредиентов ===
-            if (!empty($validated['ingredients'])) {
-                $product->ingredients()->sync(
-                    collect($validated['ingredients'])->mapWithKeys(function ($id) {
-                        return [$id => ['default_selected' => false, 'extra_price' => 0]];
-                    })->toArray()
-                );
-            }
+            // 🔥 ingredient_groups уже декодирован в decodeJsonFields()
+            $this->syncIngredientGroups($product, $request->input('ingredient_groups', []));
+            $this->syncComponents($product, $request);
 
             DB::commit();
 
-            $product->load(['categories', 'attributes', 'ingredients']);
-
-            // === Обновляем products_count у категорий ===
-            if (!empty($validated['categories'])) {
-                $workspace->categories()
-                    ->whereIn('id', $validated['categories'])
-                    ->get()
-                    ->each(function ($category) {
-                        $category->loadCount('products');
-                    });
-            }
-
-            // === Триггер вебхуков ===
-            $this->triggerWebhooks($workspace, $product);
+            $product->load(['categories', 'attributes', 'ingredientGroups.ingredients', 'components']);
 
             return response()->json($product, 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-
-            if (!empty($images)) {
-                foreach ($images as $img) {
-                    if (isset($img['url']) && str_contains($img['url'], '/storage/')) {
-                        $path = str_replace('/storage/', '', $img['url']);
-                        Storage::disk('public')->delete($path);
-                    }
-                }
-            }
-
+            $this->cleanupImages($images ?? []);
             Log::error('Product creation failed: ' . $e->getMessage());
 
             return response()->json([
@@ -228,7 +257,6 @@ class ProductController extends Controller
     public function update(Request $request, $workspaceUuid, $productId)
     {
         $workspace = App::make('workspace');
-
         $product = $workspace->products()->findOrFail($productId);
 
         $this->decodeJsonFields($request);
@@ -249,8 +277,6 @@ class ProductController extends Controller
             'attributes' => 'nullable|array',
             'attributes.*.name' => 'required|string|max:255',
             'attributes.*.value' => 'required|string|max:255',
-            'ingredients' => 'nullable|array',
-            'ingredients.*' => 'integer',
             'images' => 'nullable|array',
             'images.*' => 'file|image|max:5120',
             'images_existing' => 'nullable|array',
@@ -260,10 +286,8 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
-            // Сохраняем старые категории для обновления счётчиков
             $oldCategoryIds = $product->categories()->pluck('categories.id')->toArray();
 
-            // Обновляем основные поля
             $product->update([
                 'name' => $validated['name'] ?? $product->name,
                 'sku' => $validated['sku'] ?? $product->sku,
@@ -273,90 +297,41 @@ class ProductController extends Controller
                 'dimensions' => $validated['dimensions'] ?? $product->dimensions,
             ]);
 
-            // === Обработка изображений ===
             if ($request->hasFile('images') || $request->has('images_existing')) {
-                $images = [];
-
-                if ($request->hasFile('images')) {
-                    foreach ($request->file('images') as $image) {
-                        $path = $image->store("products/{$workspace->id}", 'public');
-                        $images[] = [
-                            'url' => Storage::url($path),
-                            'name' => $image->getClientOriginalName(),
-                            'size' => $image->getSize(),
-                        ];
-                    }
-                }
-
-                if ($request->has('images_existing')) {
-                    foreach ($request->input('images_existing') as $url) {
-                        $images[] = [
-                            'url' => $url,
-                            'name' => basename($url),
-                            'size' => null,
-                        ];
-                    }
-                }
-
+                $images = $this->processImages($request);
                 $product->update(['images' => $images]);
             }
 
-            // === Синхронизация категорий ===
             if (array_key_exists('categories', $validated)) {
+                $validCategoryIds = $this->syncCategories($product, $workspace, $validated['categories'] ?? []);
+            } else {
                 $validCategoryIds = [];
-                if (!empty($validated['categories'])) {
-                    $validCategoryIds = $workspace->categories()
-                        ->whereIn('id', $validated['categories'])
-                        ->pluck('id')
-                        ->toArray();
-                }
-
-                $product->categories()->sync($validCategoryIds);
             }
 
-            // === Обновление атрибутов ===
             if (array_key_exists('attributes', $validated)) {
-                $product->attributes()->delete();
-                if (!empty($validated['attributes'])) {
-                    foreach ($validated['attributes'] as $attr) {
-                        $product->attributes()->create([
-                            'name' => $attr['name'],
-                            'value' => $attr['value'],
-                        ]);
-                    }
-                }
+                $this->syncAttributes($product, $validated['attributes'] ?? []);
             }
 
-            // === Синхронизация ингредиентов ===
-            if (array_key_exists('ingredients', $validated)) {
-                if (!empty($validated['ingredients'])) {
-                    $product->ingredients()->sync(
-                        collect($validated['ingredients'])->mapWithKeys(function ($id) {
-                            return [$id => ['default_selected' => false, 'extra_price' => 0]];
-                        })->toArray()
-                    );
-                } else {
-                    $product->ingredients()->detach();
-                }
+            // 🔥 ingredient_groups уже декодирован
+            if ($request->has('ingredient_groups')) {
+                $this->syncIngredientGroups($product, $request->input('ingredient_groups', []));
+            }
+
+            if ($request->has('components')) {
+                $this->syncComponents($product, $request);
             }
 
             DB::commit();
 
-            $product->load(['categories', 'attributes', 'ingredients']);
+            $product->load(['categories', 'attributes', 'ingredientGroups.ingredients', 'components']);
 
-            // === Обновляем products_count у затронутых категорий ===
             $allCategoryIds = array_unique(array_merge($oldCategoryIds, $validCategoryIds ?? []));
             if (!empty($allCategoryIds)) {
                 $workspace->categories()
                     ->whereIn('id', $allCategoryIds)
                     ->get()
-                    ->each(function ($category) {
-                        $category->loadCount('products');
-                    });
+                    ->each(fn($c) => $c->loadCount('products'));
             }
-
-            // === Триггер вебхуков ===
-            $this->triggerWebhooks($workspace, $product);
 
             return response()->json($product);
 
