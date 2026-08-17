@@ -66,6 +66,29 @@
                     <span class="current-price">{{ formatPrice(product.price) }}</span>
                 </div>
 
+                <!-- 🆕 МЕТА-ИНФОРМАЦИЯ: Ингредиенты и компоненты -->
+                <div v-if="hasModifiers" class="card-modifiers">
+                    <!-- 🆕 Ингредиенты -->
+                    <div
+                        v-if="totalIngredientsCount > 0"
+                        class="modifier-badge modifier-ingredients"
+                        :title="`${totalIngredientsCount} ${pluralize(totalIngredientsCount, 'ингредиент', 'ингредиента', 'ингредиентов')} в ${ingredientGroupsCount} ${pluralize(ingredientGroupsCount, 'группе', 'группах', 'группах')}`"
+                    >
+                        <i class="fa-solid fa-blender"></i>
+                        <span>{{ totalIngredientsCount }}</span>
+                    </div>
+
+                    <!-- 🆕 Составные товары -->
+                    <div
+                        v-if="totalComponentsCount > 0"
+                        class="modifier-badge modifier-components"
+                        :title="`${totalComponentsCount} ${pluralize(totalComponentsCount, 'компонент', 'компонента', 'компонентов')} в составе`"
+                    >
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                        <span>{{ totalComponentsCount }}</span>
+                    </div>
+                </div>
+
                 <!-- Категории -->
                 <div v-if="product.categories && product.categories.length > 0" class="card-categories">
                     <span
@@ -135,12 +158,47 @@ export default {
             if (!this.product.old_price || !this.product.price) return 0
             const discount = ((this.product.old_price - this.product.price) / this.product.old_price) * 100
             return Math.round(discount)
+        },
+
+        // 🆕 Общее количество ингредиентов во всех группах
+        totalIngredientsCount() {
+            if (!this.product.ingredient_groups || !Array.isArray(this.product.ingredient_groups)) {
+                return 0
+            }
+            return this.product.ingredient_groups.reduce((sum, group) => {
+                return sum + (group.ingredients?.length || 0)
+            }, 0)
+        },
+
+        // 🆕 Количество групп ингредиентов (для tooltip)
+        ingredientGroupsCount() {
+            return this.product.ingredient_groups?.length || 0
+        },
+
+        // 🆕 Количество составных компонентов
+        totalComponentsCount() {
+            if (!this.product.is_composite) return 0
+            return this.product.components?.length || 0
+        },
+
+        // 🆕 Есть ли вообще какие-то модификаторы
+        hasModifiers() {
+            return this.totalIngredientsCount > 0 || this.totalComponentsCount > 0
         }
     },
 
     methods: {
         formatPrice(price) {
             return new Intl.NumberFormat('ru-RU').format(price) + ' ₽'
+        },
+
+        pluralize(count, one, two, five) {
+            const n = Math.abs(count) % 100
+            const n1 = n % 10
+            if (n > 10 && n < 20) return five
+            if (n1 > 1 && n1 < 5) return two
+            if (n1 === 1) return one
+            return five
         },
 
         openImagesModal() {
@@ -386,6 +444,61 @@ export default {
     text-decoration: line-through;
 }
 
+/* === 🆕 МОДИФИКАТОРЫ (Ингредиенты и Компоненты) === */
+.card-modifiers {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.modifier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    cursor: help;
+}
+
+.modifier-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.modifier-badge i {
+    font-size: 9px;
+}
+
+.modifier-badge span {
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* Ингредиенты - фиолетовый */
+.modifier-ingredients {
+    background: rgba(111, 66, 193, 0.12);
+    color: #6f42c1;
+}
+
+.modifier-ingredients:hover {
+    background: rgba(111, 66, 193, 0.2);
+}
+
+/* Составные товары - зелёный */
+.modifier-components {
+    background: rgba(25, 135, 84, 0.12);
+    color: #198754;
+}
+
+.modifier-components:hover {
+    background: rgba(25, 135, 84, 0.2);
+}
+
 /* === Категории === */
 .card-categories {
     display: flex;
@@ -495,6 +608,25 @@ export default {
         font-size: 13px;
     }
 
+    /* 🆕 Увеличиваем модификаторы на десктопе */
+    .card-modifiers {
+        gap: 5px;
+        margin-top: 6px;
+    }
+
+    .modifier-badge {
+        padding: 3px 8px;
+        font-size: 11px;
+    }
+
+    .modifier-badge i {
+        font-size: 10px;
+    }
+
+    .modifier-badge span {
+        font-size: 11px;
+    }
+
     .category-tag,
     .category-more {
         font-size: 10px;
@@ -589,6 +721,25 @@ export default {
         font-size: 11px;
     }
 
+    /* 🆕 Компактные модификаторы на мобилке */
+    .card-modifiers {
+        gap: 3px;
+        margin-top: 3px;
+    }
+
+    .modifier-badge {
+        padding: 2px 6px;
+        font-size: 9px;
+    }
+
+    .modifier-badge i {
+        font-size: 8px;
+    }
+
+    .modifier-badge span {
+        font-size: 9px;
+    }
+
     .category-tag,
     .category-more {
         font-size: 8px;
@@ -671,6 +822,24 @@ export default {
 
     .old-price {
         font-size: 10px;
+    }
+
+    .card-modifiers {
+        gap: 2px;
+        margin-top: 2px;
+    }
+
+    .modifier-badge {
+        padding: 1px 5px;
+        font-size: 8px;
+    }
+
+    .modifier-badge i {
+        font-size: 7px;
+    }
+
+    .modifier-badge span {
+        font-size: 8px;
     }
 
     .category-tag,
