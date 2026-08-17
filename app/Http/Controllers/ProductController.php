@@ -405,11 +405,23 @@ class ProductController extends Controller
             }
         }
 
-        // Удаляем связи
+        // ✅ Удаляем связи (новая архитектура)
         $product->categories()->detach();
         $product->attributes()->delete();
-        $product->ingredients()->detach();
-        $product->collections()->detach();
+
+        // 🆕 Группы ингредиентов (каскадно удалятся и ингредиенты)
+        $product->ingredientGroups()->delete();
+
+        // 🆕 Открепляем составные товары (компоненты этого товара)
+        $product->components()->detach();
+
+        // 🆕 Открепляем от других товаров, где этот товар является компонентом
+        $product->compositeProducts()->detach();
+
+        // Старые связи (на случай обратной совместимости)
+        if (method_exists($product, 'collections')) {
+            $product->collections()->detach();
+        }
 
         // Мягкое удаление (soft delete)
         $product->delete();
@@ -417,7 +429,6 @@ class ProductController extends Controller
         return response()->json(['message' => 'Product deleted']);
     }
 
-    // В ProductController добавить:
     public function destroyMultiple(Request $request)
     {
         $workspace = App::make('workspace');
@@ -429,7 +440,6 @@ class ProductController extends Controller
 
         $ids = $validated['ids'];
 
-        // Получаем товары
         $products = $workspace->products()
             ->whereIn('id', $ids)
             ->get();
@@ -452,11 +462,22 @@ class ProductController extends Controller
                     }
                 }
 
-                // Удаляем связи
+                // ✅ Удаляем связи (новая архитектура)
                 $product->categories()->detach();
                 $product->attributes()->delete();
-                $product->ingredients()->detach();
-                $product->collections()->detach();
+
+                // 🆕 Группы ингредиентов
+                $product->ingredientGroups()->delete();
+
+                // 🆕 Компоненты
+                $product->components()->detach();
+
+                // 🆕 Обратная связь
+                $product->compositeProducts()->detach();
+
+                if (method_exists($product, 'collections')) {
+                    $product->collections()->detach();
+                }
 
                 // Мягкое удаление
                 $product->delete();
@@ -476,7 +497,7 @@ class ProductController extends Controller
         }
     }
 
-    // В ProductController.php добавить:
+
 
     /**
      * Добавить товары в стоп-лист

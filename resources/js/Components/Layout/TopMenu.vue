@@ -1149,7 +1149,7 @@ export default {
     .panel {
         position: fixed;
         top: auto;
-        bottom: 0;
+        bottom: 30px;
         left: 0;
         right: 0;
         min-width: auto;
