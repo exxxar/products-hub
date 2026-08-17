@@ -209,12 +209,24 @@ class ProductController extends Controller
             'images.*' => 'file|image|max:5120',
             'images_existing' => 'nullable|array',
             'images_existing.*' => 'string',
+            // 🆕 Добавляем валидацию для флага
+            'is_composite' => 'nullable|boolean',
         ]);
 
         DB::beginTransaction();
 
         try {
             $images = $this->processImages($request);
+
+            // 🆕 Проверяем, пришли ли компоненты в запросе
+            $componentsInput = $request->input('components');
+            $components = is_string($componentsInput)
+                ? json_decode($componentsInput, true)
+                : $componentsInput;
+
+            // 🆕 Автоматически определяем is_composite
+            $hasComponents = is_array($components) && !empty($components);
+            $isComposite = $validated['is_composite'] ?? $hasComponents;
 
             $product = Product::create([
                 'workspace_id' => $workspace->id,
@@ -227,14 +239,19 @@ class ProductController extends Controller
                 'images' => $images,
                 'is_active' => true,
                 'in_stop_list' => false,
+                'is_composite' => (bool)$isComposite, // 🆕 Устанавливаем флаг
             ]);
 
             $this->syncCategories($product, $workspace, $validated['categories'] ?? []);
             $this->syncAttributes($product, $validated['attributes'] ?? []);
-
-            // 🔥 ingredient_groups уже декодирован в decodeJsonFields()
             $this->syncIngredientGroups($product, $request->input('ingredient_groups', []));
             $this->syncComponents($product, $request);
+
+            // 🆕 Двойная проверка: если после syncComponents появились компоненты,
+            // но флаг был false — обновляем его
+            if (!$isComposite && $product->components()->exists()) {
+                $product->update(['is_composite' => true]);
+            }
 
             DB::commit();
 
@@ -281,6 +298,8 @@ class ProductController extends Controller
             'images.*' => 'file|image|max:5120',
             'images_existing' => 'nullable|array',
             'images_existing.*' => 'string',
+            // 🆕 Добавляем валидацию
+            'is_composite' => 'nullable|boolean',
         ]);
 
         DB::beginTransaction();
@@ -288,14 +307,21 @@ class ProductController extends Controller
         try {
             $oldCategoryIds = $product->categories()->pluck('categories.id')->toArray();
 
-            $product->update([
+            $updateData = [
                 'name' => $validated['name'] ?? $product->name,
                 'sku' => $validated['sku'] ?? $product->sku,
                 'price' => $validated['price'] ?? $product->price,
                 'old_price' => $validated['old_price'] ?? $product->old_price,
                 'description' => $validated['description'] ?? $product->description,
                 'dimensions' => $validated['dimensions'] ?? $product->dimensions,
-            ]);
+            ];
+
+            // 🆕 Если флаг явно передан — используем его
+            if (array_key_exists('is_composite', $validated)) {
+                $updateData['is_composite'] = (bool)$validated['is_composite'];
+            }
+
+            $product->update($updateData);
 
             if ($request->hasFile('images') || $request->has('images_existing')) {
                 $images = $this->processImages($request);
@@ -312,13 +338,18 @@ class ProductController extends Controller
                 $this->syncAttributes($product, $validated['attributes'] ?? []);
             }
 
-            // 🔥 ingredient_groups уже декодирован
             if ($request->has('ingredient_groups')) {
                 $this->syncIngredientGroups($product, $request->input('ingredient_groups', []));
             }
 
             if ($request->has('components')) {
                 $this->syncComponents($product, $request);
+
+                // 🆕 Автоматически обновляем флаг на основе наличия компонентов
+                $hasComponents = $product->components()->exists();
+                if ($product->is_composite !== $hasComponents) {
+                    $product->update(['is_composite' => $hasComponents]);
+                }
             }
 
             DB::commit();
