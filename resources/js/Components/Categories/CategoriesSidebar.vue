@@ -15,20 +15,50 @@
             </button>
         </div>
 
-        <div class="sidebar-content">
+        <div class="sidebar-content" @dragover.prevent @drop="onDrop">
             <div
-                v-for="category in store.categories"
+                v-for="(category, index) in store.categories"
                 :key="category.id"
                 class="category-item"
-                :class="{ active: selectedCategory?.id === category.id }"
+                :class="{
+                    active: selectedCategory?.id === category.id,
+                    'is-dragging': draggedIndex === index,
+                    'is-drag-over': dragOverIndex === index
+                }"
+                draggable="true"
+                @dragstart="onDragStart(index)"
+                @dragover.prevent.stop="onDragOver(index)"
+                @dragend="onDragEnd"
                 @click="$emit('select-category', category)"
             >
+                <i class="fa-solid fa-grip-vertical drag-handle" title="Перетащить"></i>
+
                 <i class="fa-solid fa-tag"></i>
                 <span class="category-name">{{ category.name }}</span>
                 <span class="category-count">{{ category.products_count || 0 }}</span>
 
                 <!-- Действия при hover -->
                 <div class="category-actions">
+                    <!-- Кнопки перемещения -->
+                    <button
+                        type="button"
+                        class="btn-action"
+                        :disabled="index === 0"
+                        @click.stop="moveUp(index)"
+                        title="Переместить вверх"
+                    >
+                        <i class="fa-solid fa-chevron-up"></i>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-action"
+                        :disabled="index === store.categories.length - 1"
+                        @click.stop="moveDown(index)"
+                        title="Переместить вниз"
+                    >
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+
                     <button
                         type="button"
                         class="btn-action"
@@ -71,7 +101,8 @@
                 Новая категория
             </button>
         </div>
-        <!-- Подтверждение удаления -->
+
+        <!-- Подтверждение удаления (без изменений) -->
         <div v-if="showDeleteModal" class="modal-overlay" @click="showDeleteModal = false">
             <div class="modal-content" @click.stop>
                 <h6 class="delete-title">
@@ -130,11 +161,80 @@ export default {
             store: useWorkspaceStore(),
             showDeleteModal: false,
             categoryToDelete: null,
-            isDeleting: false
+            isDeleting: false,
+            draggedIndex: null,
+            dragOverIndex: null
         }
     },
 
     methods: {
+        // === Кнопки вверх/вниз ===
+        async moveUp(index) {
+            if (index === 0) return;
+            await this.moveCategory(index, index - 1);
+        },
+
+        async moveDown(index) {
+            if (index === this.store.categories.length - 1) return;
+            await this.moveCategory(index, index + 1);
+        },
+
+        async moveCategory(fromIndex, toIndex) {
+            // 1. Копируем массив
+            const categories = [...this.store.categories];
+
+            // 2. Извлекаем элемент и вставляем на новую позицию
+            const [movedItem] = categories.splice(fromIndex, 1);
+            categories.splice(toIndex, 0, movedItem);
+
+            // 3. Обновляем UI
+            this.store.categories = categories;
+
+            // 4. Отправляем на сервер
+            const orderedIds = categories.map(c => c.id);
+            try {
+                await this.store.reorderCategories(orderedIds);
+            } catch (error) {
+                console.error('Ошибка сортировки:', error);
+                await this.store.loadCategories();
+            }
+        },
+
+        // === Drag & Drop Methods ===
+        onDragStart(index) {
+            this.draggedIndex = index;
+        },
+        onDragOver(index) {
+            if (this.draggedIndex !== null) {
+                this.dragOverIndex = index;
+            }
+        },
+        onDragEnd() {
+            this.draggedIndex = null;
+            this.dragOverIndex = null;
+        },
+        async onDrop() {
+            if (this.draggedIndex !== null && this.dragOverIndex !== null && this.draggedIndex !== this.dragOverIndex) {
+                const categories = [...this.store.categories];
+                const draggedItem = categories.splice(this.draggedIndex, 1)[0];
+                categories.splice(this.dragOverIndex, 0, draggedItem);
+
+                this.store.categories = categories;
+
+                const orderedIds = categories.map(c => c.id);
+                try {
+                    await this.store.reorderCategories(orderedIds);
+                } catch (error) {
+                    console.error('Ошибка сортировки:', error);
+                    await this.store.loadCategories();
+                }
+            }
+
+            this.draggedIndex = null;
+            this.dragOverIndex = null;
+        },
+
+        // === Existing Methods ===
         confirmDelete(category) {
             this.categoryToDelete = category
             this.showDeleteModal = true
@@ -147,10 +247,7 @@ export default {
 
             try {
                 await this.store.deleteCategory(this.categoryToDelete.id)
-
-                // Перезагружаем список категорий
                 await this.store.loadCategories()
-
                 this.showDeleteModal = false
                 this.categoryToDelete = null
             } catch (error) {
@@ -164,6 +261,10 @@ export default {
     }
 }
 </script>
+
+
+
+
 
 <style scoped>
 .categories-sidebar {
@@ -441,5 +542,100 @@ export default {
 .btn-preset:hover {
     background: #6f42c1;
     color: #fff;
+}
+/* === НОВЫЕ СТИЛИ ДЛЯ DRAG & DROP === */
+.category-item {
+    user-select: none; /* Запрещаем выделение текста при перетаскивании */
+    border-top: 2px solid transparent; /* Резервируем место под индикатор */
+    margin-top: -2px; /* Компенсируем бордер, чтобы верстка не прыгала */
+}
+
+.category-item:first-child {
+    margin-top: 0;
+}
+
+.category-item.is-dragging {
+    opacity: 0.4;
+    background: #f8f9fa;
+}
+
+.category-item.is-drag-over {
+    border-top-color: #0d6efd; /* Синяя линия над элементом, куда происходит вставка */
+}
+
+.drag-handle {
+    cursor: grab;
+    color: #ced4da;
+    font-size: 12px;
+    margin-right: 6px;
+    transition: color 0.15s ease;
+}
+
+.category-item:hover .drag-handle {
+    color: #6c757d;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+ .btn-action:disabled {
+     opacity: 0.3;
+     cursor: not-allowed;
+ }
+
+.btn-action:disabled:hover {
+    background: transparent;
+    color: #6c757d;
+}
+
+.category-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.category-item:hover .category-actions {
+    opacity: 1;
+}
+
+.category-item:hover .category-count {
+    display: none;
+}
+
+.drag-handle {
+    cursor: grab;
+    color: #ced4da;
+    font-size: 12px;
+    margin-right: 6px;
+    transition: color 0.15s ease;
+}
+
+.category-item:hover .drag-handle {
+    color: #6c757d;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.category-item.is-dragging {
+    opacity: 0.4;
+    background: #f8f9fa;
+}
+
+.category-item.is-drag-over {
+    border-top-color: #0d6efd;
+}
+
+.category-item {
+    user-select: none;
+    border-top: 2px solid transparent;
+    margin-top: -2px;
+}
+
+.category-item:first-child {
+    margin-top: 0;
 }
 </style>

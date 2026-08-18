@@ -15,11 +15,42 @@ class CategoryController extends Controller
 
         $categories = $workspace->categories()
             ->withCount('products')
-            ->orderByDesc('products_count')   // 🔥 сортируем по убыванию кол-ва товаров
-            ->orderBy('name')                  // при равенстве — по алфавиту
+            // 🔥 Сначала сортируем по пользовательскому порядку (NULL в конец)
+            ->orderByRaw('COALESCE(sort_order, 999999) ASC')
+            ->orderByDesc('products_count')   // При равенстве — по кол-ву товаров
+            ->orderBy('name')                 // И по алфавиту
             ->get();
 
         return response()->json($categories);
+    }
+
+    /**
+     * 🔥 Изменение порядка сортировки категорий
+     */
+    public function reorder(Request $request)
+    {
+        $workspace = App::make('workspace');
+
+        $validated = $request->validate([
+            'ordered_ids' => 'required|array',
+            'ordered_ids.*' => 'integer|exists:categories,id',
+        ]);
+
+        // Проверяем, что все переданные ID принадлежат текущему workspace (безопасность)
+        $validIds = $workspace->categories()
+            ->whereIn('id', $validated['ordered_ids'])
+            ->pluck('id')
+            ->toArray();
+
+        foreach ($validated['ordered_ids'] as $index => $id) {
+            if (in_array($id, $validIds)) {
+                $workspace->categories()
+                    ->where('id', $id)
+                    ->update(['sort_order' => $index]);
+            }
+        }
+
+        return response()->json(['message' => 'Порядок категорий успешно обновлен']);
     }
 
     public function store(Request $request)
@@ -239,7 +270,7 @@ class CategoryController extends Controller
 
         $query = $category->products()
             ->where('workspace_id', $workspace->id)
-            ->with(['categories', 'attributes', 'ingredients'])
+            ->with(['categories', 'attributes', 'ingredientGroups'])
             ->orderBy('created_at', 'desc');
 
         if ($search = $request->input('search')) {

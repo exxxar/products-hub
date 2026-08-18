@@ -201,6 +201,7 @@ Route::prefix('workspaces/{uuid}')
             Route::get('/', [CategoryController::class, 'index']);
             Route::post('/', [CategoryController::class, 'store'])->middleware('master.unlocked');
             // НОВОЕ: Товары категории
+            Route::post('/reorder', [CategoryController::class, 'reorder']);
             Route::get('/{category_id}/products', [CategoryController::class, 'products']);
             Route::get('/{category_id}', [CategoryController::class, 'show']);
             Route::put('/{category_id}', [CategoryController::class, 'update'])->middleware('master.unlocked');

@@ -16,7 +16,12 @@ export default {
         setCategories(categories) {
             this.categories = categories || []
         },
-
+        async reorderCategories(orderedIds) {
+            // Замените URL на ваш актуальный эндпоинт (с учетом workspaceUuid)
+            await axios.post(`/api/workspaces/${this.uuid}/categories/reorder`, {
+                ordered_ids: orderedIds
+            });
+        },
         async loadCategories() {
             try {
                 const response = await axios.get(`/api/workspaces/${this.uuid}/categories`)
