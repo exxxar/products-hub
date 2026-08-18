@@ -60,7 +60,6 @@
                 >
                     <!-- Изображение -->
                     <div class="card-image">
-
                         <img
                             v-if="collection.image_url "
                             :src="collection.image_url"
@@ -160,19 +159,46 @@
             </div>
 
             <!-- Контент: Категории -->
-            <div v-else key="categories" class="sidebar-content">
+            <div v-else key="categories" class="sidebar-content" @dragover.prevent @drop="onDropCategory">
                 <div
-                    v-for="category in store.categories"
+                    v-for="(category, index) in store.categories"
                     :key="category.id"
                     class="sidebar-item"
-                    :class="{ active: selectedCategory?.id === category.id }"
+                    :class="{
+                        active: selectedCategory?.id === category.id,
+                        'is-dragging': draggedCategoryIndex === index,
+                        'is-drag-over': dragOverCategoryIndex === index
+                    }"
+                    draggable="true"
+                    @dragstart="onDragStartCategory(index)"
+                    @dragover.prevent.stop="onDragOverCategory(index)"
+                    @dragend="onDragEndCategory"
                     @click="selectCategory(category)"
                 >
+                    <i class="fa-solid fa-grip-vertical drag-handle" title="Перетащить"></i>
                     <i class="fa-solid fa-tag"></i>
                     <span class="item-name">{{ category.name }}</span>
                     <span class="item-count">{{ category.products_count || 0 }}</span>
 
                     <div class="item-actions">
+                        <button
+                            type="button"
+                            class="btn-action"
+                            :disabled="index === 0"
+                            @click.stop="moveCategoryUp(index)"
+                            title="Переместить вверх"
+                        >
+                            <i class="fa-solid fa-chevron-up"></i>
+                        </button>
+                        <button
+                            type="button"
+                            class="btn-action"
+                            :disabled="index === store.categories.length - 1"
+                            @click.stop="moveCategoryDown(index)"
+                            title="Переместить вниз"
+                        >
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
                         <button
                             type="button"
                             class="btn-action"
@@ -345,7 +371,11 @@ export default {
             // Categories
             showDeleteCategoryModal: false,
             categoryToDelete: null,
-            isDeletingCategory: false
+            isDeletingCategory: false,
+
+            // Drag & Drop Categories
+            draggedCategoryIndex: null,
+            dragOverCategoryIndex: null
         }
     },
 
@@ -387,14 +417,17 @@ export default {
             this.collectionToDelete = collection
             this.showDeleteCollectionModal = true
         },
+
         switchToCategory() {
             this.activeTab = 'categories'
             this.$emit("switch-to-category")
         },
+
         switchToCollection() {
             this.activeTab = "collections"
             this.$emit("switch-to-collection")
         },
+
         async deleteCollection() {
             if (!this.collectionToDelete) return
 
@@ -451,6 +484,50 @@ export default {
                 this.$notify?.error(message)
             } finally {
                 this.isDeletingCategory = false
+            }
+        },
+
+        // === Categories Drag & Drop & Reorder ===
+        onDragStartCategory(index) {
+            this.draggedCategoryIndex = index;
+        },
+        onDragOverCategory(index) {
+            if (this.draggedCategoryIndex !== null) {
+                this.dragOverCategoryIndex = index;
+            }
+        },
+        onDragEndCategory() {
+            this.draggedCategoryIndex = null;
+            this.dragOverCategoryIndex = null;
+        },
+        async onDropCategory() {
+            if (this.draggedCategoryIndex !== null && this.dragOverCategoryIndex !== null && this.draggedCategoryIndex !== this.dragOverCategoryIndex) {
+                await this.reorderCategories(this.draggedCategoryIndex, this.dragOverCategoryIndex);
+            }
+            this.onDragEndCategory();
+        },
+        async moveCategoryUp(index) {
+            if (index === 0) return;
+            await this.reorderCategories(index, index - 1);
+        },
+        async moveCategoryDown(index) {
+            if (index === this.store.categories.length - 1) return;
+            await this.reorderCategories(index, index + 1);
+        },
+        async reorderCategories(fromIndex, toIndex) {
+            // 1. Локально меняем массив для мгновенного отклика UI
+            const categories = [...this.store.categories];
+            const [movedItem] = categories.splice(fromIndex, 1);
+            categories.splice(toIndex, 0, movedItem);
+            this.store.categories = categories;
+
+            // 2. Сохраняем новый порядок на сервер
+            const orderedIds = categories.map(c => c.id);
+            try {
+                await this.store.reorderCategories(orderedIds);
+            } catch (error) {
+                console.error('Ошибка сортировки категорий:', error);
+                await this.store.loadCategories(); // Откат при ошибке
             }
         },
 
@@ -798,6 +875,7 @@ export default {
     transition: all 0.15s ease;
     margin-bottom: 4px;
     position: relative;
+    user-select: none;
 }
 
 .sidebar-item:hover {
@@ -809,13 +887,13 @@ export default {
     color: #0d6efd;
 }
 
-.sidebar-item > i {
+.sidebar-item > i.fa-tag {
     font-size: 14px;
     color: #6c757d;
     flex-shrink: 0;
 }
 
-.sidebar-item.active > i {
+.sidebar-item.active > i.fa-tag {
     color: #0d6efd;
 }
 
@@ -840,6 +918,31 @@ export default {
 .sidebar-item.active .item-count {
     background: #0d6efd;
     color: #fff;
+}
+
+/* === Drag & Drop Styles === */
+.drag-handle {
+    cursor: grab;
+    color: #ced4da;
+    font-size: 12px;
+    transition: color 0.15s ease;
+}
+
+.sidebar-item:hover .drag-handle {
+    color: #6c757d;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.sidebar-item.is-dragging {
+    opacity: 0.4;
+    background: #f8f9fa;
+}
+
+.sidebar-item.is-drag-over {
+    box-shadow: inset 0 3px 0 0 #0d6efd; /* Синяя линия сверху без сдвигов верстки */
 }
 
 /* === Actions (появляются при hover) === */
@@ -885,6 +988,16 @@ export default {
 
 .btn-action i {
     font-size: 11px;
+}
+
+.btn-action:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.btn-action:disabled:hover {
+    background: transparent;
+    color: #6c757d;
 }
 
 /* === Empty state === */
@@ -986,12 +1099,8 @@ export default {
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .modal-content {
@@ -1005,14 +1114,8 @@ export default {
 }
 
 @keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .modal-content h6 {
@@ -1139,6 +1242,10 @@ export default {
     }
 
     .card-actions {
+        opacity: 1;
+    }
+
+    .item-actions {
         opacity: 1;
     }
 }
