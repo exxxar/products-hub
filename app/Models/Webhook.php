@@ -236,7 +236,7 @@ class Webhook extends Model
             'is_composite' => (bool) ($product->is_composite ?? false),
             'in_stop_list' => (bool) $product->in_stop_list,
             'categories' => $this->safeMapRelation($product->categories ?? [], function ($c) {
-                return ['id' => $c->id ?? null, 'name' => $c->name ?? ''];
+                return ['id' => $c->id ?? null, 'name' => $c->name ?? '','sort_order'=>$c->sort_order ?? 0];
             }),
             'images' => $this->safeMapRelation($product->images ?? [], function ($img) {
                 if (is_array($img)) {
