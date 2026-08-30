@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Exports\ProductsExport;
+use App\Models\Product;
 use App\Models\Workspace;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -232,5 +234,230 @@ class WorkspaceController extends Controller
             new ProductsExport($workspace->id),
             'products.xlsx'
         );
+    }
+
+    public function duplicate(Request $request, string $uuid)
+    {
+        $validated = $request->validate([
+            'source_uuid' => 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+        ]);
+
+        // $source - это текущая доска, из которой инициировано копирование
+        $source = Workspace::withCount(['products', 'categories', 'collections'])
+            ->where('uuid', $validated["source_uuid"])
+            ->firstOrFail();
+
+        $workspace = App::make('workspace');
+
+        DB::beginTransaction();
+
+        try {
+            $newWorkspace = Workspace::withoutEvents(function () use ($source, $validated, $workspace) {
+
+                // 1. Создаем саму доску
+                $newWs = Workspace::create([
+                    'uuid' => Str::uuid()->toString(),
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? $source->description,
+                    'settings' => $source->settings,
+                    'label' => $source->label,
+                    'color' => $source->color,
+                    'logo_path' => $source->logo_path,
+                    'url' => $source->url,
+                ]);
+
+                $workspace->linkWorkspace($newWs->uuid);
+
+                // 2. Копируем категории
+                $categoryMap = [];
+                foreach ($source->categories as $cat) {
+                    $newCat = $newWs->categories()->create([
+                        'name' => $cat->name,
+                        'parent_id' => null,
+                        'sort_order' => $cat->sort_order ?? 0,
+                    ]);
+                    $categoryMap[$cat->id] = $newCat->id;
+                }
+
+                // Восстанавливаем иерархию категорий
+                foreach ($source->categories as $cat) {
+                    if ($cat->parent_id && isset($categoryMap[$cat->parent_id])) {
+                        $newWs->categories()
+                            ->where('id', $categoryMap[$cat->id])
+                            ->update(['parent_id' => $categoryMap[$cat->parent_id]]);
+                    }
+                }
+
+                // 3. Копируем коллекции и их правила
+                $collectionMap = [];
+                $collectionCategoryMap = [];
+
+                foreach ($source->collections as $col) {
+                    $newCol = $newWs->collections()->create([
+                        'name' => $col->name,
+                        'description' => $col->description,
+                        'short_description' => $col->short_description,
+                        'type' => $col->type,
+                        'pricing_type' => $col->pricing_type,
+                        'fixed_price' => $col->fixed_price,
+                        'discount_percent' => $col->discount_percent,
+                        'image_url' => $col->image_url,
+                        'is_active' => $col->is_active,
+                        'in_stop_list' => $col->in_stop_list,
+                        'sort_order' => $col->sort_order,
+                    ]);
+                    $collectionMap[$col->id] = $newCol->id;
+
+                    foreach ($col->collectionCategories as $cc) {
+                        $newCc = $newCol->collectionCategories()->create([
+                            'category_id' => $categoryMap[$cc->category_id] ?? null,
+                            'category_name' => $cc->category_name,
+                            'selection_rule' => $cc->selection_rule,
+                            'sort_order' => $cc->sort_order,
+                        ]);
+                        $collectionCategoryMap[$cc->id] = $newCc->id;
+                    }
+                }
+
+                // 4. Копируем товары и все их связи
+                $source->products()
+                    ->with(['attributes', 'ingredientGroups.ingredients', 'collections', 'components', 'categories'])
+                    ->chunk(100, function ($products) use ($newWs, $categoryMap, $collectionMap, $collectionCategoryMap) {
+
+                        $productMap = [];
+                        $componentsToAttach = [];
+
+                        foreach ($products as $prod) {
+                            $newProd = $newWs->products()->create([
+                                'name' => $prod->name,
+                                'sku' => $prod->sku,
+                                'price' => $prod->price,
+                                'old_price' => $prod->old_price,
+                                'description' => $prod->description,
+                                'images' => $prod->images,
+                                'dimensions' => $prod->dimensions,
+                                'external_source' => $prod->external_source,
+                                'config' => $prod->config,
+                                'external_id' => $prod->external_id,
+                                'is_active' => $prod->is_active,
+                                'is_composite' => $prod->is_composite,
+                                'in_stop_list' => $prod->in_stop_list,
+                            ]);
+
+                            $productMap[$prod->id] = $newProd->id;
+
+                            foreach ($prod->attributes as $attr) {
+                                $newProd->attributes()->create(['name' => $attr->name, 'value' => $attr->value]);
+                            }
+
+                            foreach ($prod->ingredientGroups as $group) {
+                                $newGroup = $newProd->ingredientGroups()->create(['name' => $group->name, 'sort_order' => $group->sort_order]);
+                                foreach ($group->ingredients as $ing) {
+                                    $newGroup->ingredients()->create([
+                                        'name' => $ing->name, 'extra_price' => $ing->extra_price,
+                                        'is_default' => $ing->is_default, 'sort_order' => $ing->sort_order,
+                                    ]);
+                                }
+                            }
+
+                            $newCategoryIds = $prod->categories->map(fn($c) => $categoryMap[$c->id] ?? null)->filter()->values()->all();
+                            if (!empty($newCategoryIds)) {
+                                $newProd->categories()->attach($newCategoryIds);
+                            }
+
+                            $attachCollections = [];
+                            foreach ($prod->collections as $col) {
+                                $newColId = $collectionMap[$col->id] ?? null;
+                                if ($newColId) {
+                                    $attachCollections[$newColId] = ['sort_order' => $col->pivot->sort_order ?? 0];
+                                }
+                            }
+                            if (!empty($attachCollections)) {
+                                $newProd->collections()->attach($attachCollections);
+                            }
+
+                            foreach ($prod->components as $component) {
+                                $newComponentId = $productMap[$component->id] ?? null;
+                                if ($newComponentId) {
+                                    $componentsToAttach[$newProd->id][$newComponentId] = [
+                                        'quantity' => $component->pivot->quantity,
+                                        'sort_order' => $component->pivot->sort_order,
+                                    ];
+                                }
+                            }
+                        }
+
+                        foreach ($componentsToAttach as $newProdId => $components) {
+                            $targetProd = $newWs->products()->find($newProdId);
+                            if ($targetProd) {
+                                $targetProd->components()->attach($components);
+                            }
+                        }
+
+                        foreach ($collectionCategoryMap as $oldCcId => $newCcId) {
+                            $oldCc = \App\Models\CollectionCategory::with('products')->find($oldCcId);
+                            if ($oldCc) {
+                                $newCc = \App\Models\CollectionCategory::find($newCcId);
+                                if ($newCc) {
+                                    $newProdIds = $oldCc->products->map(fn($p) => $productMap[$p->id] ?? null)->filter()->values()->all();
+                                    if (!empty($newProdIds)) {
+                                        $newCc->products()->attach($newProdIds);
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                return $newWs;
+            });
+
+
+
+
+            DB::commit();
+
+            Log::info('Workspace duplicated and linked successfully', [
+                'source_uuid' => $source->uuid,
+                'new_id' => $newWorkspace->id,
+                'new_uuid' => $newWorkspace->uuid
+            ]);
+
+
+
+
+            return response()->json([
+                'success' => true,
+                'workspace' => [
+                    'id' => $newWorkspace->id,
+                    'uuid' => $newWorkspace->uuid,
+                    'name' => $newWorkspace->name,
+                    'label' => $newWorkspace->label,
+                    'color' => $newWorkspace->color,
+                    'logo_url' => $newWorkspace->logo_url,
+                    'is_current' => false,
+                    'stats' => [
+                        'products_count' => $source->products_count,
+                        'categories_count' => $source->categories_count,
+                        'collections_count' => $source->collections_count,
+                    ]
+                ],
+
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Workspace duplication failed', [
+                'uuid' => $uuid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка при копировании доски: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

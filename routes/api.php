@@ -3,7 +3,7 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\ImportController;
-use App\Http\Controllers\IngredientGroupController;
+
 use App\Http\Controllers\MenuDefaultImageController;
 use App\Http\Controllers\MenuGeneratorController;
 use App\Http\Controllers\PresenceController;
@@ -21,7 +21,7 @@ use App\Http\Controllers\WorkspaceController;
 
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CollectionController;
-use App\Http\Controllers\IngredientController;
+
 
 
 /*
@@ -36,17 +36,20 @@ Route::post('/workspaces', [WorkspaceController::class, 'store']);
 
 Route::prefix('workspaces/{uuid}')
     ->group(function () {
-// Основная загрузка панели
         Route::get('/', [WorkspaceController::class, 'show']);
+
     });
 
 Route::prefix('workspaces/{uuid}')
     ->middleware(["workspace.auth"])
     ->group(function () {
+        Route::post('/duplicate', [WorkspaceController::class, 'duplicate']);
 
         Route::put('/', [WorkspaceController::class, 'update'])->middleware('master.unlocked');
         Route::delete('/', [WorkspaceController::class, 'destroy'])
             ->middleware('master.unlocked');
+
+
 
         Route::prefix('workspace')
             ->group(function () {
@@ -241,6 +244,8 @@ Route::prefix('workspaces/{uuid}')
             Route::post('/sync-all', [WebhookController::class, 'syncAll'])->middleware('master.unlocked');
 
         });
+
+
     });
 
 

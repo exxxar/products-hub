@@ -123,6 +123,16 @@
                 </div>
 
                 <div class="card-actions">
+                    <!-- ✅ Кнопка копирования теперь открывает модалку -->
+                    <button
+                        type="button"
+                        class="card-action-btn"
+                        @click.stop="openDuplicateModal(workspace)"
+                        title="Скопировать доску"
+                    >
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+
                     <button
                         type="button"
                         class="card-action-btn"
@@ -202,15 +212,24 @@
             <p>Нет связанных досок</p>
             <small>Добавьте доски через настройки → "Доски"</small>
         </div>
+
+        <DuplicateWorkspaceModal
+            v-model="showDuplicateModal"
+            :workspace="workspaceToDuplicate"
+            @confirm="handleConfirmDuplicate"
+        />
     </div>
 </template>
 
 <script>
 import draggable from 'vuedraggable'
 import { useWorkspaceStore } from '@/store/workspace.js'
+import DuplicateWorkspaceModal from '@/Components/Layout/DuplicateWorkspaceModal.vue' // ✅ Импорт
+
+
 export default {
     name: 'WorkspaceCardsGrid',
-    components: { draggable },
+    components: { draggable, DuplicateWorkspaceModal },
     props: {
         workspaces: {
             type: Array,
@@ -226,7 +245,10 @@ export default {
             isOrdering: false,
             isSaving: false,
             orderingList: [], // Копия списка для редактирования
-            originalOrder: [] // Для отмены
+            originalOrder: [],
+            isDuplicating: false,
+            showDuplicateModal: false,
+            workspaceToDuplicate: null,
         }
     },
     computed: {
@@ -255,6 +277,39 @@ export default {
         this.loadStatsIfNeeded()
     },
     methods: {
+        openDuplicateModal(workspace) {
+            this.workspaceToDuplicate = workspace
+            this.showDuplicateModal = true
+        },
+
+        // ✅ 2. Обрабатываем подтверждение из модалки
+        async handleConfirmDuplicate(formData) {
+            this.isDuplicating = true
+            try {
+                await this.store.duplicateWorkspace({
+                    sourceUuid: this.workspaceToDuplicate.uuid,
+                    name: formData.name,
+                    description: formData.description
+                }).then((response)=>{
+                    this.workspaces.unshift(response)
+                })
+
+                this.$notify?.success({
+                    title: 'Доска скопирована',
+                    message: `«${formData.name}» успешно создана со всеми товарами`
+                })
+
+                this.showDuplicateModal = false
+                this.workspaceToDuplicate = null
+            } catch (error) {
+                this.$notify?.error({
+                    title: 'Ошибка',
+                    message: error.response?.data?.message || 'Не удалось скопировать доску'
+                })
+            } finally {
+                this.isDuplicating = false
+            }
+        },
         getInitials(workspace) {
             if (workspace.label) return workspace.label
             return (workspace.name || 'WS').substring(0, 2).toUpperCase()
@@ -733,9 +788,10 @@ export default {
     color: #084298;
 }
 
+/* Обновляем существующий .card-actions, чтобы кнопки выстраивались в ряд, если их много */
 .card-actions {
     display: flex;
-    flex-direction: column;
+    flex-direction: column; /* Или row, если хотите в ряд. Column лучше для 3+ кнопок */
     gap: 6px;
     flex-shrink: 0;
     opacity: 0;
@@ -761,10 +817,23 @@ export default {
     transition: all 0.15s ease;
 }
 
-.card-action-btn:hover {
+.card-action-btn:hover:not(:disabled) {
     background: #e7f1ff;
     border-color: #0d6efd;
     color: #0d6efd;
+}
+
+.card-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f8f9fa;
+}
+
+/* Специальный ховер для кнопки копирования, чтобы выделить её */
+.card-action-btn[title="Скопировать доску с товарами"]:hover:not(:disabled) {
+    background: #f0fdf4; /* Светло-зелёный фон */
+    border-color: #198754;
+    color: #198754;
 }
 
 .card-arrow {

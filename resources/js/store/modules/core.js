@@ -59,6 +59,34 @@ export default {
                 throw error
             }
         },
+
+
+        // В actions вашего store:
+
+        async duplicateWorkspace({ sourceUuid, name, description }) {
+            this.isDuplicating = true
+            try {
+                const response = await axios.post(`/api/workspaces/${this.uuid}/duplicate`, {
+                    source_uuid: sourceUuid,
+                    name: name,
+                    description: description
+                })
+                console.log("response.data", response.data)
+                if (response.data.success) {
+                    // Добавляем новую доску в начало списка
+
+                   // this.workspaces.unshift(response.data.workspace)
+                    return response.data.workspace
+                } else {
+                    throw new Error(response.data.message || 'Неизвестная ошибка')
+                }
+            } catch (error) {
+                console.error('Duplicate workspace failed:', error)
+                throw error // Пробрасываем ошибку дальше для обработки в компоненте
+            } finally {
+                this.isDuplicating = false
+            }
+        },
         async loadWorkspace() {
             this.isLoading = true
             this.error = null
