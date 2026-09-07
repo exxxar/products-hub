@@ -236,7 +236,11 @@ class Webhook extends Model
             'is_composite' => (bool) ($product->is_composite ?? false),
             'in_stop_list' => (bool) $product->in_stop_list,
             'categories' => $this->safeMapRelation($product->categories ?? [], function ($c) {
-                return ['id' => $c->id ?? null, 'name' => $c->name ?? '','sort_order'=>$c->sort_order ?? 0];
+                return [
+                    'id' => $c->id ?? null,
+                    'name' => $c->name ?? '',
+                    'sort_order' => $c->sort_order ?? 0
+                ];
             }),
             'images' => $this->safeMapRelation($product->images ?? [], function ($img) {
                 if (is_array($img)) {
@@ -248,11 +252,15 @@ class Webhook extends Model
                 return ['name' => $a->name ?? '', 'value' => $a->value ?? ''];
             }),
 
-            // 🔥 НОВАЯ структура: группы ингредиентов с вложенными ингредиентами
+            // 🔥 ОБНОВЛЕННАЯ структура: группы ингредиентов с правилами выбора
             'ingredient_groups' => $this->safeMapRelation($product->ingredientGroups ?? [], function ($group) {
                 return [
                     'id' => $group->id ?? null,
                     'name' => $group->name ?? '',
+                    'selection_rule' => $group->selection_rule ?? 'single',       // ✅ НОВОЕ: single, multiple, all, optional
+                    'min_select' => (int) ($group->min_select ?? 1),             // ✅ НОВОЕ
+                    'max_select' => (int) ($group->max_select ?? 1),             // ✅ НОВОЕ
+                    'is_required' => (bool) ($group->is_required ?? true),       // ✅ НОВОЕ
                     'sort_order' => $group->sort_order ?? 0,
                     'ingredients' => $this->safeMapRelation($group->ingredients ?? [], function ($ing) {
                         return [

@@ -139,21 +139,28 @@ class ProductController extends Controller
 
     private function syncIngredientGroups(Product $product, array $groups): void
     {
-        // Удаляем старые группы (каскадно удалятся и ингредиенты)
+        // Удаляем старые группы (каскадно удалятся и ингредиенты благодаря onDelete('cascade') в миграции)
         $product->ingredientGroups()->delete();
 
         foreach ($groups as $groupIndex => $groupData) {
             $group = $product->ingredientGroups()->create([
-                'name' => $groupData['name'],
+                'name' => $groupData['name'] ?? 'Новая группа',
+
+                // ✅ Новые поля правил выбора с безопасными значениями по умолчанию
+                'selection_rule' => $groupData['selection_rule'] ?? 'single',
+                'min_select' => (int) ($groupData['min_select'] ?? 1),
+                'max_select' => (int) ($groupData['max_select'] ?? 1),
+                'is_required' => (bool) ($groupData['is_required'] ?? true),
+
                 'sort_order' => $groupData['sort_order'] ?? $groupIndex,
             ]);
 
-            if (!empty($groupData['ingredients'])) {
+            if (!empty($groupData['ingredients']) && is_array($groupData['ingredients'])) {
                 foreach ($groupData['ingredients'] as $ingIndex => $ingData) {
                     $group->ingredients()->create([
-                        'name' => $ingData['name'],
-                        'extra_price' => $ingData['extra_price'] ?? 0,
-                        'is_default' => $ingData['is_default'] ?? false,
+                        'name' => $ingData['name'] ?? '',
+                        'extra_price' => (float) ($ingData['extra_price'] ?? 0),
+                        'is_default' => (bool) ($ingData['is_default'] ?? false),
                         'sort_order' => $ingData['sort_order'] ?? $ingIndex,
                     ]);
                 }
@@ -211,6 +218,20 @@ class ProductController extends Controller
             'images_existing.*' => 'string',
             // 🆕 Добавляем валидацию для флага
             'is_composite' => 'nullable|boolean',
+
+            'ingredient_groups' => 'nullable|array',
+            'ingredient_groups.*.name' => 'required|string|max:255',
+            'ingredient_groups.*.selection_rule' => 'required|in:single,multiple,all,optional',
+            'ingredient_groups.*.min_select' => 'nullable|integer|min:0',
+            'ingredient_groups.*.max_select' => 'nullable|integer|min:1',
+            'ingredient_groups.*.is_required' => 'nullable|boolean',
+            'ingredient_groups.*.sort_order' => 'nullable|integer',
+
+            'ingredient_groups.*.ingredients' => 'nullable|array',
+            'ingredient_groups.*.ingredients.*.name' => 'required|string|max:255',
+            'ingredient_groups.*.ingredients.*.extra_price' => 'nullable|numeric|min:0',
+            'ingredient_groups.*.ingredients.*.is_default' => 'nullable|boolean',
+            'ingredient_groups.*.ingredients.*.sort_order' => 'nullable|integer',
         ]);
 
         DB::beginTransaction();
