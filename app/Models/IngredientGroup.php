@@ -33,6 +33,8 @@ class IngredientGroup extends Model
         'optional' => 'Необязательно',
     ];
 
+    protected $with = ["ingredients"];
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
