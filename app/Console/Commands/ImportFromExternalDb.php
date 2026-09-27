@@ -9,30 +9,29 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use PDO;
 use PDOException;
+use Throwable;
 
 class ImportFromExternalDb extends Command
 {
     protected $signature = 'import:external-db
-                            {--workspace= : UUID целевого workspace (обязательно)}
+                            {--workspace= : UUID целевого workspace (об обязательно)}
                             {--host=localhost : Хост внешней БД}
                             {--port=3306 : Порт внешней БД}
                             {--database= : Имя внешней БД (обязательно)}
                             {--username=root : Пользователь внешней БД}
                             {--password= : Пароль внешней БД}
-                            {--table-prefix= : Префикс таблиц (например, "wp_")}
+                            {--table-prefix= : Префикс таблиц}
                             {--products-table=products : Имя таблицы товаров}
                             {--categories-table=categories : Имя таблицы категорий}
                             {--pivot-table=product_category : Имя pivot-таблицы}
-                            {--bot-id= : Фильтр по bot_id (если нужно импортировать только определённого бота)}
+                            {--bot-id= : Фильтр по bot_id}
                             {--sub-shop-id= : Фильтр по sub_shop_id}
                             {--update-existing : Обновлять существующие товары по SKU}
                             {--skip-images : Не импортировать изображения}
                             {--skip-categories : Не импортировать категории}
-                            {--dry-run : Только показать что будет импортировано, без записи в БД}
+                            {--dry-run : Только показать что будет импортировано}
                             {--batch-size=100 : Размер батча для импорта}
-                            {--timeout=30 : Timeout подключения в секундах}
-                            {--error-log-file= : Путь к файлу для лога ошибок (по умолчанию storage/logs/import_errors_{timestamp}.json)}
-                            {--include-trace : Включать полный трейс ошибок в лог}';
+                            {--timeout=30 : Timeout подключения в секундах}';
 
     protected $description = 'Импорт товаров и категорий из внешней базы данных';
 
@@ -43,22 +42,25 @@ class ImportFromExternalDb extends Command
     protected int $skippedProducts = 0;
     protected int $failedProducts = 0;
     protected int $importedCategories = 0;
-    protected array $categoryMap = []; // old_id => new_id
-    protected array $errors = [];
-    protected string $errorLogFile = '';
+    protected array $categoryMap = [];
+
+    // Путь к простому текстовому логу
+    protected string $errorLogPath;
 
     public function handle(): int
     {
         $this->info('🚀 Импорт из внешней базы данных');
         $this->line('');
 
-        if (!$this->validateParams()) {
-            return self::FAILURE;
-        }
+        // Инициализация простого текстового лога на сегодня
+        $this->errorLogPath = storage_path('logs/import_errors_' . date('Y-m-d') . '.log');
+        file_put_contents($this->errorLogPath, "\n" . str_repeat('=', 80) . "\n", FILE_APPEND);
+        file_put_contents($this->errorLogPath, "Начало импорта: " . now()->toDateTimeString() . "\n", FILE_APPEND);
+        file_put_contents($this->errorLogPath, "Workspace: " . $this->option('workspace') . "\n", FILE_APPEND);
+        file_put_contents($this->errorLogPath, str_repeat('=', 80) . "\n", FILE_APPEND);
 
-        if (!$this->connectToExternalDb()) {
-            return self::FAILURE;
-        }
+        if (!$this->validateParams()) return self::FAILURE;
+        if (!$this->connectToExternalDb()) return self::FAILURE;
 
         $workspace = Workspace::where('uuid', $this->option('workspace'))->first();
         if (!$workspace) {
@@ -74,204 +76,107 @@ class ImportFromExternalDb extends Command
             $this->line('');
         }
 
-        // Инициализация файла лога ошибок
-        $this->initErrorLog();
-
         $startTime = microtime(true);
 
         try {
             if (!$this->option('skip-categories')) {
                 $this->importCategories($workspace);
             }
-
             $this->importProducts($workspace);
-
             $this->showReport($startTime);
-
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->newLine();
             $this->error("❌ Критическая ошибка: {$e->getMessage()}");
-
-            // Логируем критическую ошибку
-            $this->addError([
-                'type' => 'critical',
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
-            ]);
-
-            Log::error('External DB import failed', [
-                'workspace' => $workspace->uuid,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            $this->logError('КРИТИЧЕСКАЯ ОШИБКА ИМПОРТА', $e);
             return self::FAILURE;
         } finally {
             $this->disconnect();
-            $this->saveErrorLog();
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * Инициализация файла лога ошибок
+     * Записывает полный текст ошибки и трейс в обычный текстовый файл
      */
-    protected function initErrorLog(): void
+    protected function logError(string $context, Throwable $e): void
     {
-        $logFile = $this->option('error-log-file');
+        $errorMessage = "[{$context}]\n";
+        $errorMessage .= "Сообщение: " . $e->getMessage() . "\n";
+        $errorMessage .= "Файл: " . $e->getFile() . " (строка {$e->getLine()})\n";
+        $errorMessage .= "Трейс (Stack Trace):\n" . $e->getTraceAsString() . "\n";
+        $errorMessage .= str_repeat('-', 80) . "\n";
 
-        if (empty($logFile)) {
-            $timestamp = date('Y-m-d_H-i-s');
-            $logFile = storage_path("logs/import_errors_{$timestamp}.json");
-        }
+        // Пишем в наш специальный файл
+        file_put_contents($this->errorLogPath, $errorMessage, FILE_APPEND);
 
-        $this->errorLogFile = $logFile;
-
-        // Создаём директорию если её нет
-        $dir = dirname($logFile);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-
-        $this->info("📝 Лог ошибок будет сохранён в: {$logFile}");
-        $this->line('');
-    }
-
-    /**
-     * Добавление ошибки в массив
-     */
-    protected function addError(array $errorData): void
-    {
-        $errorData['timestamp'] = date('Y-m-d H:i:s');
-        $this->errors[] = $errorData;
-    }
-
-    /**
-     * Сохранение лога ошибок в файл
-     */
-    protected function saveErrorLog(): void
-    {
-        if (empty($this->errors)) {
-            return;
-        }
-
-        $logData = [
-            'import_info' => [
-                'workspace_uuid' => $this->option('workspace'),
-                'database' => $this->option('database'),
-                'host' => $this->option('host'),
-                'timestamp' => date('Y-m-d H:i:s'),
-                'total_errors' => count($this->errors),
-            ],
-            'errors' => $this->errors,
-        ];
-
-        $json = json_encode($logData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        file_put_contents($this->errorLogFile, $json);
+        // Дублируем в стандартный лог Laravel для надёжности
+        Log::error("Import Error [{$context}]: " . $e->getMessage(), ['exception' => $e]);
     }
 
     protected function validateParams(): bool
     {
-        if (!$this->option('workspace')) {
-            $this->error('❌ Параметр --workspace обязателен');
-            return false;
-        }
-
-        if (!$this->option('database')) {
-            $this->error('❌ Параметр --database обязателен');
+        if (!$this->option('workspace') || !$this->option('database')) {
+            $this->error('❌ Параметры --workspace и --database обязательны');
             return false;
         }
 
         $this->tablePrefix = $this->option('table-prefix') ?? '';
-
-        $this->info('🔧 Параметры подключения:');
-        $this->line("   Host: {$this->option('host')}:{$this->option('port')}");
-        $this->line("   Database: {$this->option('database')}");
-        $this->line("   Username: {$this->option('username')}");
-        $this->line("   Table prefix: " . ($this->tablePrefix ?: '(нет)'));
-        $this->line('');
-
         return true;
     }
 
     protected function connectToExternalDb(): bool
     {
         $this->info('🔌 Подключение к внешней БД...');
-
-        $dsn = sprintf(
-            'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
-            $this->option('host'),
-            $this->option('port'),
-            $this->option('database')
+        $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
+            $this->option('host'), $this->option('port'), $this->option('database')
         );
 
         try {
-            $this->externalPdo = new PDO(
-                $dsn,
-                $this->option('username'),
-                $this->option('password'),
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_TIMEOUT => (int) $this->option('timeout'),
-                ]
-            );
+            $this->externalPdo = new PDO($dsn, $this->option('username'), $this->option('password'), [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_TIMEOUT => (int) $this->option('timeout'),
+            ]);
 
             $productsTable = $this->tablePrefix . $this->option('products-table');
             $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
             $stmt->execute([$productsTable]);
 
             if ($stmt->rowCount() === 0) {
-                $this->error("❌ Таблица '{$productsTable}' не найдена в внешней БД");
+                $this->error("❌ Таблица '{$productsTable}' не найдена");
                 return false;
             }
 
             $this->info('✅ Подключение успешно');
-            $this->line('');
             return true;
-
         } catch (PDOException $e) {
             $this->error("❌ Ошибка подключения: {$e->getMessage()}");
+            $this->logError('Подключение к БД', $e);
             return false;
         }
     }
 
-    protected function disconnect(): void
-    {
-        $this->externalPdo = null;
-    }
+    protected function disconnect(): void { $this->externalPdo = null; }
 
     protected function importCategories(Workspace $workspace): void
     {
         $table = $this->tablePrefix . $this->option('categories-table');
-
         $this->info("📂 Импорт категорий из таблицы '{$table}'...");
 
         $stmtCheck = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
         $stmtCheck->execute([$table]);
         if ($stmtCheck->rowCount() === 0) {
-            $this->error("❌ Таблица '{$table}' не найдена во внешней БД.");
-            $this->line("   Проверьте правильность имени таблицы (параметр --categories-table) или укажите верный --table-prefix.");
-
-            $stmtAll = $this->externalPdo->query("SHOW TABLES");
-            $allTables = $stmtAll->fetchAll(PDO::FETCH_COLUMN);
-            $similar = array_filter($allTables, fn($t) => stripos($t, 'categ') !== false || stripos($t, 'cat') !== false);
-            if (!empty($similar)) {
-                $this->warn("💡 Возможно, вы имели в виду одну из этих таблиц: " . implode(', ', $similar));
-            }
+            $this->warn("⚠️ Таблица '{$table}' не найдена. Пропускаем категории.");
             return;
         }
 
         $query = "SELECT * FROM {$table}";
         $params = [];
-
         if ($this->option('bot-id')) {
             $query .= ' WHERE bot_id = ?';
             $params[] = $this->option('bot-id');
         }
-
         $query .= ' ORDER BY order_position ASC, id ASC';
 
         try {
@@ -280,17 +185,13 @@ class ImportFromExternalDb extends Command
             $categories = $stmt->fetchAll();
 
             if (empty($categories)) {
-                $this->warn('   ⚠️  Категории не найдены');
-                $this->line('');
+                $this->warn('   ⚠️ Категории не найдены');
                 return;
             }
 
             $this->line("   Найдено категорий: " . count($categories));
-
-            if (!$this->option('dry-run')) {
-                $bar = $this->output->createProgressBar(count($categories));
-                $bar->start();
-            }
+            $bar = $this->option('dry-run') ? null : $this->output->createProgressBar(count($categories));
+            if ($bar) $bar->start();
 
             foreach ($categories as $cat) {
                 try {
@@ -300,115 +201,64 @@ class ImportFromExternalDb extends Command
                         continue;
                     }
 
-                    $existing = $workspace->categories()
-                        ->where('name', $cat['title'])
-                        ->first();
-
+                    $existing = $workspace->categories()->where('name', $cat['title'])->first();
                     if ($existing) {
                         $this->categoryMap[$cat['id']] = $existing->id;
-                        if (!$this->option('dry-run')) {
-                            $bar->advance();
-                        }
-                        continue;
+                    } else {
+                        $newCategory = Category::create([
+                            'workspace_id' => $workspace->id,
+                            'name' => $cat['title'],
+                            'sort_order' => $cat['order_position'] ?? 0,
+                        ]);
+                        $this->categoryMap[$cat['id']] = $newCategory->id;
+                        $this->importedCategories++;
                     }
-
-                    $newCategory = Category::create([
-                        'workspace_id' => $workspace->id,
-                        'name' => $cat['title'],
-                        'sort_order' => $cat['order_position'] ?? 0,
-                    ]);
-
-                    $this->categoryMap[$cat['id']] = $newCategory->id;
-                    $this->importedCategories++;
-
-                } catch (\Throwable $e) {
-                    $this->addError([
-                        'type' => 'category_import',
-                        'category_id' => $cat['id'] ?? null,
-                        'category_title' => $cat['title'] ?? 'Unknown',
-                        'message' => $e->getMessage(),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                        'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
-                    ]);
+                } catch (Throwable $e) {
+                    $this->failedProducts++; // считаем как общую ошибку
+                    $this->logError("Импорт категории ID: {$cat['id']} ({$cat['title']})", $e);
                 }
-
-                if (!$this->option('dry-run')) {
-                    $bar->advance();
-                }
+                if ($bar) $bar->advance();
             }
 
-            if (!$this->option('dry-run')) {
-                $bar->finish();
-                $this->newLine(2);
-            }
-
+            if ($bar) { $bar->finish(); $this->newLine(2); }
             $this->info("✅ Импортировано категорий: {$this->importedCategories}");
-            $this->line('');
 
         } catch (PDOException $e) {
             $this->error("❌ Ошибка чтения категорий: {$e->getMessage()}");
-            $this->addError([
-                'type' => 'category_query',
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
-            ]);
+            $this->logError('Запрос категорий из внешней БД', $e);
         }
     }
 
     protected function importProducts(Workspace $workspace): void
     {
         $table = $this->tablePrefix . $this->option('products-table');
-
         $this->info("📦 Импорт товаров из таблицы '{$table}'...");
 
         $countQuery = "SELECT COUNT(*) as cnt FROM {$table} WHERE deleted_at IS NULL";
         $countParams = [];
-
-        if ($this->option('bot-id')) {
-            $countQuery .= ' AND bot_id = ?';
-            $countParams[] = $this->option('bot-id');
-        }
-
-        if ($this->option('sub-shop-id')) {
-            $countQuery .= ' AND sub_shop_id = ?';
-            $countParams[] = $this->option('sub-shop-id');
-        }
+        if ($this->option('bot-id')) { $countQuery .= ' AND bot_id = ?'; $countParams[] = $this->option('bot-id'); }
+        if ($this->option('sub-shop-id')) { $countQuery .= ' AND sub_shop_id = ?'; $countParams[] = $this->option('sub-shop-id'); }
 
         $stmt = $this->externalPdo->prepare($countQuery);
         $stmt->execute($countParams);
         $totalCount = (int) $stmt->fetchColumn();
 
         if ($totalCount === 0) {
-            $this->warn('   ⚠️  Товары не найдены');
+            $this->warn('   ⚠️ Товары не найдены');
             return;
         }
 
         $this->line("   Найдено товаров: {$totalCount}");
-
         $batchSize = (int) $this->option('batch-size');
         $offset = 0;
 
-        if (!$this->option('dry-run')) {
-            $bar = $this->output->createProgressBar($totalCount);
-            $bar->start();
-        }
+        $bar = $this->option('dry-run') ? null : $this->output->createProgressBar($totalCount);
+        if ($bar) $bar->start();
 
         $selectQuery = "SELECT * FROM {$table} WHERE deleted_at IS NULL";
         $selectParams = [];
-
-        if ($this->option('bot-id')) {
-            $selectQuery .= ' AND bot_id = ?';
-            $selectParams[] = $this->option('bot-id');
-        }
-
-        if ($this->option('sub-shop-id')) {
-            $selectQuery .= ' AND sub_shop_id = ?';
-            $selectParams[] = $this->option('sub-shop-id');
-        }
-
+        if ($this->option('bot-id')) { $selectQuery .= ' AND bot_id = ?'; $selectParams[] = $this->option('bot-id'); }
+        if ($this->option('sub-shop-id')) { $selectQuery .= ' AND sub_shop_id = ?'; $selectParams[] = $this->option('sub-shop-id'); }
         $selectQuery .= ' ORDER BY id ASC';
 
         while ($offset < $totalCount) {
@@ -417,50 +267,26 @@ class ImportFromExternalDb extends Command
             $stmt->execute($selectParams);
             $products = $stmt->fetchAll();
 
-            if (empty($products)) {
-                break;
-            }
+            if (empty($products)) break;
 
             foreach ($products as $product) {
                 try {
                     $this->importSingleProduct($workspace, $product);
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     $this->failedProducts++;
-                    $this->addError([
-                        'type' => 'product_import',
-                        'product_id' => $product['id'] ?? null,
-                        'product_title' => $product['title'] ?? 'Unknown',
-                        'product_sku' => $product['article'] ?? null,
-                        'message' => $e->getMessage(),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                        'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
-                    ]);
+                    $this->logError("Импорт товара ID: {$product['id']} ({$product['title']})", $e);
                 }
-
-                if (!$this->option('dry-run')) {
-                    $bar->advance();
-                }
+                if ($bar) $bar->advance();
             }
-
             $offset += $batchSize;
         }
 
-        if (!$this->option('dry-run')) {
-            $bar->finish();
-            $this->newLine(2);
-        }
+        if ($bar) { $bar->finish(); $this->newLine(2); }
 
         $this->info("✅ Импортировано товаров: {$this->importedProducts}");
-        if ($this->updatedProducts > 0) {
-            $this->info("🔄 Обновлено товаров: {$this->updatedProducts}");
-        }
-        if ($this->skippedProducts > 0) {
-            $this->warn("⏭️  Пропущено товаров: {$this->skippedProducts}");
-        }
-        if ($this->failedProducts > 0) {
-            $this->error("❌ Ошибок при импорте: {$this->failedProducts}");
-        }
+        if ($this->updatedProducts > 0) $this->info("🔄 Обновлено товаров: {$this->updatedProducts}");
+        if ($this->skippedProducts > 0) $this->warn("⏭️ Пропущено товаров: {$this->skippedProducts}");
+        if ($this->failedProducts > 0) $this->error("❌ Ошибок при импорте: {$this->failedProducts}");
     }
 
     protected function importSingleProduct(Workspace $workspace, array $product): void
@@ -470,7 +296,7 @@ class ImportFromExternalDb extends Command
 
         $existing = null;
         if ($sku) {
-            $existing = $workspace->products()->where('sku', $sku)->first();
+            $existing = Product::where('workspace_id', $workspace->id)->where('sku', $sku)->first();
         }
 
         $data = [
@@ -495,7 +321,7 @@ class ImportFromExternalDb extends Command
         }
 
         if ($this->option('dry-run')) {
-            $this->line("   [DRY] Товар: {$name} (SKU: {$sku}, Цена: {$data['price']})");
+            $this->line("   [DRY] Товар: {$name} (SKU: {$sku})");
             $this->importedProducts++;
             return;
         }
@@ -520,80 +346,46 @@ class ImportFromExternalDb extends Command
     {
         $oldPrice = (float) $oldPrice;
         $currentPrice = (float) $currentPrice;
-
-        if ($oldPrice <= 0 || $oldPrice <= $currentPrice) {
-            return null;
-        }
-
-        return $oldPrice;
+        return ($oldPrice > 0 && $oldPrice > $currentPrice) ? $oldPrice : null;
     }
 
     protected function parseImages($imagesData): array
     {
-        if (empty($imagesData)) {
-            return [];
-        }
-
+        if (empty($imagesData)) return [];
         $decoded = json_decode($imagesData, true);
-
-        if (json_last_error() === JSON_ERROR_NONE) {
-            if (is_array($decoded)) {
-                return collect($decoded)->map(function ($img) {
-                    if (is_string($img)) {
-                        return ['url' => $img, 'name' => basename($img)];
-                    }
-                    if (is_array($img)) {
-                        return [
-                            'url' => $img['url'] ?? $img['src'] ?? $img['path'] ?? '',
-                            'name' => $img['name'] ?? $img['alt'] ?? basename($img['url'] ?? ''),
-                        ];
-                    }
-                    return null;
-                })->filter()->values()->all();
-            }
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return collect($decoded)->map(function ($img) {
+                if (is_string($img)) return ['url' => $img, 'name' => basename($img)];
+                if (is_array($img)) return ['url' => $img['url'] ?? $img['src'] ?? '', 'name' => $img['name'] ?? basename($img['url'] ?? '')];
+                return null;
+            })->filter()->values()->all();
         }
-
         if (is_string($imagesData) && filter_var($imagesData, FILTER_VALIDATE_URL)) {
             return [['url' => $imagesData, 'name' => basename($imagesData)]];
         }
-
         return [];
     }
 
     protected function parseJson($data)
     {
-        if (empty($data)) {
-            return null;
-        }
-
+        if (empty($data)) return null;
         $decoded = json_decode($data, true);
         return json_last_error() === JSON_ERROR_NONE ? $decoded : null;
     }
 
     protected function attachCategories(int $productId, int $externalProductId): void
     {
-        if (empty($this->categoryMap)) {
-            return;
-        }
+        if (empty($this->categoryMap)) return;
 
         $pivotTable = $this->tablePrefix . $this->option('pivot-table');
-
         try {
             $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
             $stmt->execute([$pivotTable]);
-            if ($stmt->rowCount() === 0) {
-                return;
-            }
+            if ($stmt->rowCount() === 0) return;
 
-            $stmt = $this->externalPdo->prepare(
-                "SELECT category_id FROM {$pivotTable} WHERE product_id = ?"
-            );
+            $stmt = $this->externalPdo->prepare("SELECT category_id FROM {$pivotTable} WHERE product_id = ?");
             $stmt->execute([$externalProductId]);
             $categoryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-            if (empty($categoryIds)) {
-                return;
-            }
 
             $newCategoryIds = [];
             foreach ($categoryIds as $oldCatId) {
@@ -608,73 +400,31 @@ class ImportFromExternalDb extends Command
                     $product->categories()->syncWithoutDetaching($newCategoryIds);
                 }
             }
-
-        } catch (PDOException $e) {
-            $this->addError([
-                'type' => 'category_attach',
-                'product_id' => $productId,
-                'external_product_id' => $externalProductId,
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
-            ]);
+        } catch (Throwable $e) {
+            $this->logError("Привязка категорий к товару ID: {$productId}", $e);
         }
     }
 
     protected function showReport(float $startTime): void
     {
         $duration = round(microtime(true) - $startTime, 2);
-
         $this->newLine();
         $this->info('═══════════════════════════════════════');
         $this->info('📊 ОТЧЁТ ОБ ИМПОРТЕ');
         $this->info('═══════════════════════════════════════');
-        $this->line("   ⏱  Время выполнения: {$duration} сек");
-        $this->line("   📂 Категорий импортировано: {$this->importedCategories}");
-        $this->line("   📦 Товаров импортировано: {$this->importedProducts}");
-
-        if ($this->updatedProducts > 0) {
-            $this->line("   🔄 Товаров обновлено: {$this->updatedProducts}");
-        }
-        if ($this->skippedProducts > 0) {
-            $this->line("   ⏭️  Товаров пропущено: {$this->skippedProducts}");
-        }
-        if ($this->failedProducts > 0) {
-            $this->line("   ❌ Ошибок: {$this->failedProducts}");
-        }
+        $this->line("   ⏱  Время: {$duration} сек");
+        $this->line("   📂 Категорий: {$this->importedCategories}");
+        $this->line("   📦 Товаров создано: {$this->importedProducts}");
+        if ($this->updatedProducts > 0) $this->line("   🔄 Товаров обновлено: {$this->updatedProducts}");
+        if ($this->skippedProducts > 0) $this->line("   ⏭️ Товаров пропущено: {$this->skippedProducts}");
+        if ($this->failedProducts > 0) $this->line("   ❌ Ошибок: {$this->failedProducts}");
         $this->info('═══════════════════════════════════════');
 
-        if (!empty($this->errors)) {
+        if ($this->failedProducts > 0) {
             $this->newLine();
-            $this->warn('⚠️  Первые 10 ошибок:');
-
-            foreach (array_slice($this->errors, 0, 10) as $error) {
-                $type = $error['type'] ?? 'unknown';
-                $message = $error['message'] ?? 'Unknown error';
-
-                if ($type === 'product_import') {
-                    $this->line("   • [{$type}] Товар #{$error['product_id']} ({$error['product_title']}): {$message}");
-                } elseif ($type === 'category_import') {
-                    $this->line("   • [{$type}] Категория #{$error['category_id']} ({$error['category_title']}): {$message}");
-                } else {
-                    $this->line("   • [{$type}] {$message}");
-                }
-            }
-
-            if (count($this->errors) > 10) {
-                $this->line('   ... и ещё ' . (count($this->errors) - 10) . ' ошибок');
-            }
-
-            $this->newLine();
-            $this->info("📝 Полный лог ошибок сохранён в: {$this->errorLogFile}");
-
-            Log::warning('External DB import completed with errors', [
-                'errors_count' => count($this->errors),
-                'error_log_file' => $this->errorLogFile,
-            ]);
+            $this->warn("⚠️ Произошли ошибки. Полный текст всех ошибок с трейсом записан в файл:");
+            $this->line("📄 " . $this->errorLogPath);
         }
-
         $this->newLine();
     }
 }
