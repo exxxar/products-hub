@@ -346,6 +346,11 @@ class ImportFromExternalDb extends Command
         $sku = $product['article'] ?? null;
         $name = $product['title'] ?? "Товар #{$externalId}";
 
+        // Отладочный вывод для первого товара
+        if ($this->importedProducts === 0 && $this->updatedProducts === 0) {
+            $this->line("   🔍 DEBUG: images data = " . json_encode($product['images'] ?? null, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+
         $imageUrl = $this->extractFirstImageUrl($product['images'] ?? null);
         $this->importedExternalIds[] = $externalId;
 
@@ -410,9 +415,6 @@ class ImportFromExternalDb extends Command
         $this->attachCategories($productId, $externalId);
     }
 
-    /**
-     * Скачивает изображения в папку workspace и возвращает локальные пути
-     */
     protected function processAndDownloadImages($imagesData, Workspace $workspace, ?int $productId): array
     {
         if (empty($imagesData)) return [];
@@ -423,45 +425,53 @@ class ImportFromExternalDb extends Command
         $localImages = [];
         $targetProductId = $productId ?? 'temp_' . uniqid();
 
-        // Папка для картинок: storage/app/public/workspaces/{workspace_uuid}/products/{product_id}/
-        $directory = storage_path("app/public/workspaces/{$workspace->uuid}/products/{$targetProductId}");
-
-        if (!is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
-
         foreach ($parsed as $index => $imgData) {
             $url = $imgData['url'] ?? null;
             if (!$url) continue;
 
-            // Если URL относительный, достраиваем его через base-url
-            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            // Проверяем, является ли URL абсолютным
+            $isAbsoluteUrl = filter_var($url, FILTER_VALIDATE_URL);
+
+            // Если URL относительный
+            if (!$isAbsoluteUrl) {
                 if (empty($this->baseUrl)) {
-                    $this->logActivity("[ПРЕДУПРЕЖДЕНИЕ] Относительный путь '{$url}' не может быть обработан без --base-url");
+                    // Нет base-url — сохраняем оригинальный путь без скачивания
+                    $localImages[] = $imgData;
                     continue;
                 }
+                // Достраиваем полный URL
                 $url = $this->baseUrl . '/' . ltrim($url, '/');
             }
 
+            // Пытаемся скачать
             try {
                 $response = Http::timeout(15)->get($url);
                 if ($response->successful()) {
+                    // Создаем папку только при успешном скачивании
+                    $directory = storage_path("app/public/workspaces/{$workspace->uuid}/products/{$targetProductId}");
+
+                    if (!is_dir($directory)) {
+                        mkdir($directory, 0755, true);
+                    }
+
                     $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
                     $filename = 'img_' . $index . '_' . time() . '.' . $extension;
                     $filePath = "{$directory}/{$filename}";
 
                     file_put_contents($filePath, $response->body());
 
-                    // Локальный путь для базы: storage/workspaces/{workspace_uuid}/products/{product_id}/filename.jpg
                     $localUrl = "storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}";
 
                     $localImages[] = [
                         'url' => $localUrl,
                         'name' => $imgData['name'] ?? basename($url)
                     ];
+                } else {
+                    // Ошибка скачивания — сохраняем оригинальный URL
+                    $localImages[] = $imgData;
                 }
             } catch (\Exception $e) {
-                // Если скачать не удалось, сохраняем оригинальный URL
+                // Исключение при скачивании — сохраняем оригинальный URL
                 $localImages[] = $imgData;
             }
         }
