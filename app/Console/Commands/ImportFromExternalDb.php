@@ -415,9 +415,6 @@ class ImportFromExternalDb extends Command
         $this->attachCategories($productId, $externalId);
     }
 
-    /**
-     * ВСЕГДА скачивает изображения. Если URL относительный, подставляет https://your-cashman.com/
-     */
     protected function processAndDownloadImages($imagesData, Workspace $workspace, ?int $productId): array
     {
         if (empty($imagesData)) return [];
@@ -436,16 +433,13 @@ class ImportFromExternalDb extends Command
 
             // Если URL не начинается с http:// или https://, считаем его относительным
             if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                // Используем переданный --base-url или дефолтный домен
                 $baseDomain = !empty($this->baseUrl) ? $this->baseUrl : 'https://your-cashman.com';
                 $downloadUrl = rtrim($baseDomain, '/') . '/' . ltrim($url, '/');
             }
 
-            // Пытаемся скачать
             try {
                 $response = Http::timeout(15)->get($downloadUrl);
                 if ($response->successful()) {
-                    // Создаем папку ТОЛЬКО если скачивание успешно
                     $directory = storage_path("app/public/workspaces/{$workspace->uuid}/products/{$targetProductId}");
                     if (!is_dir($directory)) {
                         mkdir($directory, 0755, true);
@@ -457,17 +451,17 @@ class ImportFromExternalDb extends Command
 
                     file_put_contents($filePath, $response->body());
 
-                    // В базу пишем именно локальный путь для Laravel storage
+                    // ✅ СОХРАНЯЕМ ПОЛНЫЙ АБСОЛЮТНЫЙ URL
+                    $fullUrl = url("storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}");
+
                     $localImages[] = [
-                        'url' => "storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}",
+                        'url' => $fullUrl,
                         'name' => $imgData['name'] ?? basename($downloadUrl)
                     ];
                 } else {
-                    // Если сервер вернул ошибку (404 и т.д.), оставляем оригинальную ссылку из внешней БД
                     $localImages[] = $imgData;
                 }
             } catch (\Exception $e) {
-                // При любой ошибке сети оставляем оригинальную ссылку, чтобы не терять данные
                 $localImages[] = $imgData;
             }
         }
