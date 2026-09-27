@@ -38,7 +38,7 @@ class Product extends Model
         'in_stop_list' => 'boolean',
     ];
 
-    protected $with = ["categories","components"];
+    protected $with = ["categories","components","workspace"];
 
     public function workspace()
     {
