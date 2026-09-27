@@ -14,7 +14,7 @@ use Throwable;
 class ImportFromExternalDb extends Command
 {
     protected $signature = 'import:external-db
-                            {--workspace= : UUID целевого workspace (об обязательно)}
+                            {--workspace= : UUID целевого workspace (обязательно)}
                             {--host=localhost : Хост внешней БД}
                             {--port=3306 : Порт внешней БД}
                             {--database= : Имя внешней БД (обязательно)}
@@ -43,21 +43,17 @@ class ImportFromExternalDb extends Command
     protected int $failedProducts = 0;
     protected int $importedCategories = 0;
     protected array $categoryMap = [];
-
-    // Путь к простому текстовому логу
     protected string $errorLogPath;
+    protected int $consoleErrorCount = 0;
 
     public function handle(): int
     {
         $this->info('🚀 Импорт из внешней базы данных');
         $this->line('');
 
-        // Инициализация простого текстового лога на сегодня
         $this->errorLogPath = storage_path('logs/import_errors_' . date('Y-m-d') . '.log');
         file_put_contents($this->errorLogPath, "\n" . str_repeat('=', 80) . "\n", FILE_APPEND);
         file_put_contents($this->errorLogPath, "Начало импорта: " . now()->toDateTimeString() . "\n", FILE_APPEND);
-        file_put_contents($this->errorLogPath, "Workspace: " . $this->option('workspace') . "\n", FILE_APPEND);
-        file_put_contents($this->errorLogPath, str_repeat('=', 80) . "\n", FILE_APPEND);
 
         if (!$this->validateParams()) return self::FAILURE;
         if (!$this->connectToExternalDb()) return self::FAILURE;
@@ -86,7 +82,11 @@ class ImportFromExternalDb extends Command
             $this->showReport($startTime);
         } catch (Throwable $e) {
             $this->newLine();
-            $this->error("❌ Критическая ошибка: {$e->getMessage()}");
+            $this->error("❌ КРИТИЧЕСКАЯ ОШИБКА: {$e->getMessage()}");
+            $this->error("📁 Файл: {$e->getFile()} (строка {$e->getLine()})");
+            $this->error("📜 Stack Trace:");
+            $this->line($e->getTraceAsString());
+
             $this->logError('КРИТИЧЕСКАЯ ОШИБКА ИМПОРТА', $e);
             return self::FAILURE;
         } finally {
@@ -97,20 +97,31 @@ class ImportFromExternalDb extends Command
     }
 
     /**
-     * Записывает полный текст ошибки и трейс в обычный текстовый файл
+     * Выводит полный стек в консоль (для первых 3 ошибок) и пишет в файл
      */
     protected function logError(string $context, Throwable $e): void
     {
+        $this->consoleErrorCount++;
+
+        // Выводим полный стек в консоль для первых 3 ошибок, чтобы было видно сразу
+        if ($this->consoleErrorCount <= 3) {
+            $this->newLine();
+            $this->error("❌ ОШИБКА #{$this->consoleErrorCount}: {$context}");
+            $this->error("💬 Сообщение: {$e->getMessage()}");
+            $this->error("📁 Файл: {$e->getFile()} (строка {$e->getLine()})");
+            $this->error("📜 Stack Trace:");
+            $this->line($e->getTraceAsString());
+            $this->newLine();
+        }
+
+        // Также сохраняем в файл для полного отчета
         $errorMessage = "[{$context}]\n";
         $errorMessage .= "Сообщение: " . $e->getMessage() . "\n";
         $errorMessage .= "Файл: " . $e->getFile() . " (строка {$e->getLine()})\n";
         $errorMessage .= "Трейс (Stack Trace):\n" . $e->getTraceAsString() . "\n";
         $errorMessage .= str_repeat('-', 80) . "\n";
 
-        // Пишем в наш специальный файл
         file_put_contents($this->errorLogPath, $errorMessage, FILE_APPEND);
-
-        // Дублируем в стандартный лог Laravel для надёжности
         Log::error("Import Error [{$context}]: " . $e->getMessage(), ['exception' => $e]);
     }
 
@@ -120,7 +131,6 @@ class ImportFromExternalDb extends Command
             $this->error('❌ Параметры --workspace и --database обязательны');
             return false;
         }
-
         $this->tablePrefix = $this->option('table-prefix') ?? '';
         return true;
     }
@@ -214,7 +224,7 @@ class ImportFromExternalDb extends Command
                         $this->importedCategories++;
                     }
                 } catch (Throwable $e) {
-                    $this->failedProducts++; // считаем как общую ошибку
+                    $this->failedProducts++;
                     $this->logError("Импорт категории ID: {$cat['id']} ({$cat['title']})", $e);
                 }
                 if ($bar) $bar->advance();
@@ -294,6 +304,7 @@ class ImportFromExternalDb extends Command
         $sku = $product['article'] ?? null;
         $name = $product['title'] ?? "Товар #{$product['id']}";
 
+        // Используем прямой запрос, чтобы избежать проблем с отношениями моделей
         $existing = null;
         if ($sku) {
             $existing = Product::where('workspace_id', $workspace->id)->where('sku', $sku)->first();
@@ -422,8 +433,8 @@ class ImportFromExternalDb extends Command
 
         if ($this->failedProducts > 0) {
             $this->newLine();
-            $this->warn("⚠️ Произошли ошибки. Полный текст всех ошибок с трейсом записан в файл:");
-            $this->line("📄 " . $this->errorLogPath);
+            $this->warn("⚠️ Произошли ошибки. Полный стек первых 3 ошибок выведен выше в консоль.");
+            $this->warn("📄 Все ошибки также сохранены в: " . $this->errorLogPath);
         }
         $this->newLine();
     }
