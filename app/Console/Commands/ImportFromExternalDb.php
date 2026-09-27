@@ -28,6 +28,7 @@ class ImportFromExternalDb extends Command
                             {--pivot-table=product_category : Имя pivot-таблицы во внешней БД}
                             {--bot-id= : Фильтр по bot_id}
                             {--sub-shop-id= : Фильтр по sub_shop_id}
+                            {--base-url= : Базовый URL для относительных путей картинок (например, https://example.com)}
                             {--update-existing : Обновлять существующие товары по SKU или external_id}
                             {--skip-images : Не скачивать и не импортировать изображения}
                             {--skip-categories : Не импортировать категории}
@@ -40,6 +41,7 @@ class ImportFromExternalDb extends Command
 
     protected ?PDO $externalPdo = null;
     protected string $tablePrefix = '';
+    protected string $baseUrl = '';
     protected int $importedProducts = 0;
     protected int $updatedProducts = 0;
     protected int $skippedProducts = 0;
@@ -81,7 +83,6 @@ class ImportFromExternalDb extends Command
             $this->line('');
         }
 
-        // 🧹 ПОЛНАЯ ОЧИСТКА ТОВАРОВ, ЕСЛИ УКАЗАН ФЛАГ
         if ($this->option('delete-missing')) {
             $this->wipeWorkspaceProducts($workspace);
         }
@@ -109,9 +110,6 @@ class ImportFromExternalDb extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Полная очистка всех товаров в указанном workspace
-     */
     protected function wipeWorkspaceProducts(Workspace $workspace): void
     {
         $this->warn('⚠️  Активирован режим ПОЛНОЙ ОЧИСТКИ товаров для этого workspace!');
@@ -125,14 +123,10 @@ class ImportFromExternalDb extends Command
 
         $this->info('🧹 Удаление существующих товаров и их связей...');
 
-        // 1. Получаем ID всех товаров воркспейса
         $productIds = Product::where('workspace_id', $workspace->id)->pluck('id')->toArray();
 
         if (!empty($productIds)) {
-            // 2. Чистим локальную pivot-таблицу связей с категориями (чтобы не было висячих записей)
             $deletedPivots = DB::table('product_categories')->whereIn('product_id', $productIds)->delete();
-
-            // 3. Удаляем сами товары (сработает SoftDelete, если он включен в модели)
             $this->wipedProducts = Product::where('workspace_id', $workspace->id)->delete();
 
             $this->info("✅ Удалено связей в категориях: {$deletedPivots}");
@@ -179,6 +173,7 @@ class ImportFromExternalDb extends Command
             return false;
         }
         $this->tablePrefix = $this->option('table-prefix') ?? '';
+        $this->baseUrl = rtrim($this->option('base-url') ?? '', '/');
         return true;
     }
 
@@ -378,7 +373,7 @@ class ImportFromExternalDb extends Command
         ];
 
         if (!$this->option('skip-images') && !empty($product['images'])) {
-            $data['images'] = $this->processAndDownloadImages($product['images'], $workspace->id, $existing ? $existing->id : null);
+            $data['images'] = $this->processAndDownloadImages($product['images'], $workspace, $existing ? $existing->id : null);
         } else {
             $data['images'] = [];
         }
@@ -415,7 +410,10 @@ class ImportFromExternalDb extends Command
         $this->attachCategories($productId, $externalId);
     }
 
-    protected function processAndDownloadImages($imagesData, int $workspaceId, ?int $productId): array
+    /**
+     * Скачивает изображения в папку workspace и возвращает локальные пути
+     */
+    protected function processAndDownloadImages($imagesData, Workspace $workspace, ?int $productId): array
     {
         if (empty($imagesData)) return [];
 
@@ -425,31 +423,46 @@ class ImportFromExternalDb extends Command
         $localImages = [];
         $targetProductId = $productId ?? 'temp_' . uniqid();
 
+        // Папка для картинок: storage/app/public/workspaces/{workspace_uuid}/products/{product_id}/
+        $directory = storage_path("app/public/workspaces/{$workspace->uuid}/products/{$targetProductId}");
+
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
         foreach ($parsed as $index => $imgData) {
             $url = $imgData['url'] ?? null;
-            if (!$url || !filter_var($url, FILTER_VALIDATE_URL)) continue;
+            if (!$url) continue;
+
+            // Если URL относительный, достраиваем его через base-url
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                if (empty($this->baseUrl)) {
+                    $this->logActivity("[ПРЕДУПРЕЖДЕНИЕ] Относительный путь '{$url}' не может быть обработан без --base-url");
+                    continue;
+                }
+                $url = $this->baseUrl . '/' . ltrim($url, '/');
+            }
 
             try {
                 $response = Http::timeout(15)->get($url);
                 if ($response->successful()) {
                     $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
-                    $filename = 'img_' . $targetProductId . '_' . $index . '_' . time() . '.' . $extension;
-                    $directory = storage_path("app/public/products/{$workspaceId}/{$targetProductId}");
-
-                    if (!is_dir($directory)) {
-                        mkdir($directory, 0755, true);
-                    }
-
+                    $filename = 'img_' . $index . '_' . time() . '.' . $extension;
                     $filePath = "{$directory}/{$filename}";
+
                     file_put_contents($filePath, $response->body());
 
+                    // Локальный путь для базы: storage/workspaces/{workspace_uuid}/products/{product_id}/filename.jpg
+                    $localUrl = "storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}";
+
                     $localImages[] = [
-                        'url' => "storage/products/{$workspaceId}/{$targetProductId}/{$filename}",
+                        'url' => $localUrl,
                         'name' => $imgData['name'] ?? basename($url)
                     ];
                 }
             } catch (\Exception $e) {
-                $localImages[] = $imgData; // Оставляем оригинальный URL при ошибке скачивания
+                // Если скачать не удалось, сохраняем оригинальный URL
+                $localImages[] = $imgData;
             }
         }
 
