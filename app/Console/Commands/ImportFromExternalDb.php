@@ -28,16 +28,15 @@ class ImportFromExternalDb extends Command
                             {--pivot-table=product_category : Имя pivot-таблицы во внешней БД}
                             {--bot-id= : Фильтр по bot_id}
                             {--sub-shop-id= : Фильтр по sub_shop_id}
-                            {--base-url= : Базовый URL для относительных путей картинок (например, https://example.com)}
+                            {--base-url= : (Опционально) Базовый домен, если отличается от https://your-cashman.com}
                             {--update-existing : Обновлять существующие товары по SKU или external_id}
-                            {--skip-images : Не скачивать и не импортировать изображения}
                             {--skip-categories : Не импортировать категории}
                             {--delete-missing : ⚠️ ПОЛНАЯ ОЧИСТКА: удалить ВСЕ товары в workspace перед импортом}
                             {--dry-run : Только показать что будет сделано, без записи в БД}
                             {--batch-size=100 : Размер батча для импорта}
                             {--timeout=30 : Timeout подключения в секундах}';
 
-    protected $description = 'Полный импорт товаров и категорий с возможностью полной очистки workspace перед импортом и загрузкой изображений';
+    protected $description = 'Полный импорт товаров и категорий с обязательной загрузкой изображений в локальный storage';
 
     protected ?PDO $externalPdo = null;
     protected string $tablePrefix = '';
@@ -346,7 +345,7 @@ class ImportFromExternalDb extends Command
         $sku = $product['article'] ?? null;
         $name = $product['title'] ?? "Товар #{$externalId}";
 
-        // Отладочный вывод для первого товара
+        // Отладочный вывод для первого товара, чтобы видеть формат картинок
         if ($this->importedProducts === 0 && $this->updatedProducts === 0) {
             $this->line("   🔍 DEBUG: images data = " . json_encode($product['images'] ?? null, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         }
@@ -377,7 +376,8 @@ class ImportFromExternalDb extends Command
             'in_stop_list' => !empty($product['in_stop_list_at']),
         ];
 
-        if (!$this->option('skip-images') && !empty($product['images'])) {
+        // 📸 ВСЕГДА обрабатываем и скачиваем картинки, если поле не пустое
+        if (!empty($product['images'])) {
             $data['images'] = $this->processAndDownloadImages($product['images'], $workspace, $existing ? $existing->id : null);
         } else {
             $data['images'] = [];
@@ -415,6 +415,9 @@ class ImportFromExternalDb extends Command
         $this->attachCategories($productId, $externalId);
     }
 
+    /**
+     * ВСЕГДА скачивает изображения. Если URL относительный, подставляет https://your-cashman.com/
+     */
     protected function processAndDownloadImages($imagesData, Workspace $workspace, ?int $productId): array
     {
         if (empty($imagesData)) return [];
@@ -429,49 +432,42 @@ class ImportFromExternalDb extends Command
             $url = $imgData['url'] ?? null;
             if (!$url) continue;
 
-            // Проверяем, является ли URL абсолютным
-            $isAbsoluteUrl = filter_var($url, FILTER_VALIDATE_URL);
+            $downloadUrl = $url;
 
-            // Если URL относительный
-            if (!$isAbsoluteUrl) {
-                if (empty($this->baseUrl)) {
-                    // Нет base-url — сохраняем оригинальный путь без скачивания
-                    $localImages[] = $imgData;
-                    continue;
-                }
-                // Достраиваем полный URL
-                $url = $this->baseUrl . '/' . ltrim($url, '/');
+            // Если URL не начинается с http:// или https://, считаем его относительным
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                // Используем переданный --base-url или дефолтный домен
+                $baseDomain = !empty($this->baseUrl) ? $this->baseUrl : 'https://your-cashman.com';
+                $downloadUrl = rtrim($baseDomain, '/') . '/' . ltrim($url, '/');
             }
 
             // Пытаемся скачать
             try {
-                $response = Http::timeout(15)->get($url);
+                $response = Http::timeout(15)->get($downloadUrl);
                 if ($response->successful()) {
-                    // Создаем папку только при успешном скачивании
+                    // Создаем папку ТОЛЬКО если скачивание успешно
                     $directory = storage_path("app/public/workspaces/{$workspace->uuid}/products/{$targetProductId}");
-
                     if (!is_dir($directory)) {
                         mkdir($directory, 0755, true);
                     }
 
-                    $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+                    $extension = pathinfo(parse_url($downloadUrl, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
                     $filename = 'img_' . $index . '_' . time() . '.' . $extension;
                     $filePath = "{$directory}/{$filename}";
 
                     file_put_contents($filePath, $response->body());
 
-                    $localUrl = "storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}";
-
+                    // В базу пишем именно локальный путь для Laravel storage
                     $localImages[] = [
-                        'url' => $localUrl,
-                        'name' => $imgData['name'] ?? basename($url)
+                        'url' => "storage/workspaces/{$workspace->uuid}/products/{$targetProductId}/{$filename}",
+                        'name' => $imgData['name'] ?? basename($downloadUrl)
                     ];
                 } else {
-                    // Ошибка скачивания — сохраняем оригинальный URL
+                    // Если сервер вернул ошибку (404 и т.д.), оставляем оригинальную ссылку из внешней БД
                     $localImages[] = $imgData;
                 }
             } catch (\Exception $e) {
-                // Исключение при скачивании — сохраняем оригинальный URL
+                // При любой ошибке сети оставляем оригинальную ссылку, чтобы не терять данные
                 $localImages[] = $imgData;
             }
         }
@@ -496,6 +492,8 @@ class ImportFromExternalDb extends Command
     protected function parseImages($imagesData): array
     {
         if (empty($imagesData)) return [];
+
+        // Пробуем распарсить как JSON
         $decoded = json_decode($imagesData, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
             return collect($decoded)->map(function ($img) {
@@ -504,9 +502,12 @@ class ImportFromExternalDb extends Command
                 return null;
             })->filter()->values()->all();
         }
-        if (is_string($imagesData) && filter_var($imagesData, FILTER_VALIDATE_URL)) {
+
+        // Если это просто строка
+        if (is_string($imagesData)) {
             return [['url' => $imagesData, 'name' => basename($imagesData)]];
         }
+
         return [];
     }
 
