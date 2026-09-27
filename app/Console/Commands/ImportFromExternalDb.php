@@ -514,14 +514,29 @@ class ImportFromExternalDb extends Command
 
     protected function attachCategories(int $productId, int $externalProductId): void
     {
+        // Отладка для первого товара
+        static $debugShown = false;
+        if (!$debugShown && $this->importedProducts <= 1) {
+            $this->newLine();
+            $this->warn("🔍 ОТЛАДКА ПРИВЯЗКИ КАТЕГОРИЙ:");
+            $this->line("   Локальный ID товара: {$productId}");
+            $this->line("   Внешний ID товара: {$externalProductId}");
+            $this->line("   Размер categoryMap: " . count($this->categoryMap));
+            if (!empty($this->categoryMap)) {
+                $this->line("   Пример маппинга (первые 5): " . json_encode(array_slice($this->categoryMap, 0, 5, true)));
+            }
+            $debugShown = true;
+        }
+
         if (empty($this->categoryMap)) {
+            $this->logActivity("[ПРЕДУПРЕЖДЕНИЕ] Товар ID {$productId}: categoryMap пуст. Категории не были импортированы.");
             return;
         }
 
         $pivotTable = $this->tablePrefix . $this->option('pivot-table');
 
         try {
-            // 1. Проверяем существование pivot-таблицы
+            // Проверяем существование pivot-таблицы
             $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
             $stmt->execute([$pivotTable]);
             if ($stmt->rowCount() === 0) {
@@ -529,29 +544,49 @@ class ImportFromExternalDb extends Command
                 return;
             }
 
-            // 2. ✅ ИСПРАВЛЕНО: используем правильное имя колонки product_category_id
+            // Ищем связи для товара
             $stmt = $this->externalPdo->prepare("SELECT product_category_id FROM {$pivotTable} WHERE product_id = ?");
             $stmt->execute([$externalProductId]);
             $externalCategoryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-            if (empty($externalCategoryIds)) {
-                return; // У товара просто нет категорий, это нормально
+            // Отладка для первого товара
+            if ($this->importedProducts <= 1) {
+                $this->line("   Найдено связей в pivot-таблице: " . count($externalCategoryIds));
+                if (!empty($externalCategoryIds)) {
+                    $this->line("   Внешние ID категорий: " . implode(', ', $externalCategoryIds));
+                }
             }
 
-            // 3. Преобразуем старые ID категорий в новые (локальные)
+            if (empty($externalCategoryIds)) {
+                return;
+            }
+
+            // Преобразуем старые ID в новые
             $newCategoryIds = [];
             foreach ($externalCategoryIds as $oldCatId) {
                 if (isset($this->categoryMap[$oldCatId]) && $this->categoryMap[$oldCatId]) {
                     $newCategoryIds[] = $this->categoryMap[$oldCatId];
+                } else {
+                    if ($this->importedProducts <= 1) {
+                        $this->warn("   ⚠️ Внешняя категория ID {$oldCatId} не найдена в categoryMap");
+                    }
                 }
             }
 
-            // 4. Сохраняем связи в локальную БД
+            if ($this->importedProducts <= 1) {
+                $this->line("   Локальные ID категорий для привязки: " . implode(', ', $newCategoryIds));
+            }
+
+            // Сохраняем связи
             if (!empty($newCategoryIds)) {
                 $product = Product::find($productId);
                 if ($product) {
                     $product->categories()->syncWithoutDetaching($newCategoryIds);
-                    $this->logActivity("[УСПЕХ] Товар ID {$productId} (Внешний ID: {$externalProductId}) привязан к локальным категориям: " . implode(', ', $newCategoryIds));
+                    $this->logActivity("[УСПЕХ] Товар ID {$productId} привязан к категориям: " . implode(', ', $newCategoryIds));
+
+                    if ($this->importedProducts <= 1) {
+                        $this->info("   ✅ Привязка выполнена успешно!");
+                    }
                 }
             }
         } catch (Throwable $e) {
