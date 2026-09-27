@@ -6,7 +6,6 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Workspace;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
 use PDOException;
@@ -50,17 +49,14 @@ class ImportFromExternalDb extends Command
         $this->info('🚀 Импорт из внешней базы данных');
         $this->line('');
 
-        // 1. Валидация параметров
         if (!$this->validateParams()) {
             return self::FAILURE;
         }
 
-        // 2. Подключение к внешней БД
         if (!$this->connectToExternalDb()) {
             return self::FAILURE;
         }
 
-        // 3. Получение целевого workspace
         $workspace = Workspace::where('uuid', $this->option('workspace'))->first();
         if (!$workspace) {
             $this->error("❌ Workspace с UUID '{$this->option('workspace')}' не найден");
@@ -70,7 +66,6 @@ class ImportFromExternalDb extends Command
         $this->info("📁 Целевой workspace: {$workspace->name} ({$workspace->uuid})");
         $this->line('');
 
-        // Dry-run режим
         if ($this->option('dry-run')) {
             $this->warn('⚠️  Режим DRY-RUN — изменения не будут сохранены');
             $this->line('');
@@ -79,15 +74,12 @@ class ImportFromExternalDb extends Command
         $startTime = microtime(true);
 
         try {
-            // 4. Импорт категорий
             if (!$this->option('skip-categories')) {
                 $this->importCategories($workspace);
             }
 
-            // 5. Импорт товаров
             $this->importProducts($workspace);
 
-            // 6. Отчёт
             $this->showReport($startTime);
 
         } catch (\Throwable $e) {
@@ -106,9 +98,6 @@ class ImportFromExternalDb extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Валидация параметров
-     */
     protected function validateParams(): bool
     {
         if (!$this->option('workspace')) {
@@ -121,7 +110,7 @@ class ImportFromExternalDb extends Command
             return false;
         }
 
-        $this->tablePrefix = $this->option('table-prefix');
+        $this->tablePrefix = $this->option('table-prefix') ?? '';
 
         $this->info('🔧 Параметры подключения:');
         $this->line("   Host: {$this->option('host')}:{$this->option('port')}");
@@ -133,9 +122,6 @@ class ImportFromExternalDb extends Command
         return true;
     }
 
-    /**
-     * Подключение к внешней БД
-     */
     protected function connectToExternalDb(): bool
     {
         $this->info('🔌 Подключение к внешней БД...');
@@ -159,9 +145,9 @@ class ImportFromExternalDb extends Command
                 ]
             );
 
-            // Проверяем что таблицы существуют
             $productsTable = $this->tablePrefix . $this->option('products-table');
-            $stmt = $this->externalPdo->query("SHOW TABLES LIKE '{$productsTable}'");
+            $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
+            $stmt->execute([$productsTable]);
 
             if ($stmt->rowCount() === 0) {
                 $this->error("❌ Таблица '{$productsTable}' не найдена в внешней БД");
@@ -178,27 +164,37 @@ class ImportFromExternalDb extends Command
         }
     }
 
-    /**
-     * Отключение от внешней БД
-     */
     protected function disconnect(): void
     {
         $this->externalPdo = null;
     }
 
-    /**
-     * Импорт категорий
-     */
     protected function importCategories(Workspace $workspace): void
     {
         $table = $this->tablePrefix . $this->option('categories-table');
 
         $this->info("📂 Импорт категорий из таблицы '{$table}'...");
 
+        // Проверка существования таблицы
+        $stmtCheck = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
+        $stmtCheck->execute([$table]);
+        if ($stmtCheck->rowCount() === 0) {
+            $this->error("❌ Таблица '{$table}' не найдена во внешней БД.");
+            $this->line("   Проверьте правильность имени таблицы (параметр --categories-table) или укажите верный --table-prefix.");
+
+            // Пытаемся подсказать похожие таблицы
+            $stmtAll = $this->externalPdo->query("SHOW TABLES");
+            $allTables = $stmtAll->fetchAll(PDO::FETCH_COLUMN);
+            $similar = array_filter($allTables, fn($t) => stripos($t, 'categ') !== false || stripos($t, 'cat') !== false);
+            if (!empty($similar)) {
+                $this->warn("💡 Возможно, вы имели в виду одну из этих таблиц: " . implode(', ', $similar));
+            }
+            return;
+        }
+
         $query = "SELECT * FROM {$table}";
         $params = [];
 
-        // Фильтр по bot_id
         if ($this->option('bot-id')) {
             $query .= ' WHERE bot_id = ?';
             $params[] = $this->option('bot-id');
@@ -232,7 +228,6 @@ class ImportFromExternalDb extends Command
                         continue;
                     }
 
-                    // Ищем существующую категорию по названию
                     $existing = $workspace->categories()
                         ->where('name', $cat['title'])
                         ->first();
@@ -245,7 +240,6 @@ class ImportFromExternalDb extends Command
                         continue;
                     }
 
-                    // Создаём новую
                     $newCategory = Category::create([
                         'workspace_id' => $workspace->id,
                         'name' => $cat['title'],
@@ -277,16 +271,12 @@ class ImportFromExternalDb extends Command
         }
     }
 
-    /**
-     * Импорт товаров
-     */
     protected function importProducts(Workspace $workspace): void
     {
         $table = $this->tablePrefix . $this->option('products-table');
 
         $this->info("📦 Импорт товаров из таблицы '{$table}'...");
 
-        // Получаем общее количество
         $countQuery = "SELECT COUNT(*) as cnt FROM {$table} WHERE deleted_at IS NULL";
         $countParams = [];
 
@@ -319,7 +309,6 @@ class ImportFromExternalDb extends Command
             $bar->start();
         }
 
-        // Основной запрос
         $selectQuery = "SELECT * FROM {$table} WHERE deleted_at IS NULL";
         $selectParams = [];
 
@@ -333,12 +322,13 @@ class ImportFromExternalDb extends Command
             $selectParams[] = $this->option('sub-shop-id');
         }
 
-        $selectQuery .= ' ORDER BY id ASC LIMIT ? OFFSET ?';
+        $selectQuery .= ' ORDER BY id ASC';
 
         while ($offset < $totalCount) {
-            $stmt = $this->externalPdo->prepare($selectQuery);
-            $params = array_merge($selectParams, [$batchSize, $offset]);
-            $stmt->execute($params);
+            // LIMIT и OFFSET подставляем напрямую числами, чтобы избежать ошибки 1064 Syntax Error (PDO связывает их как строки)
+            $pagedQuery = $selectQuery . " LIMIT {$batchSize} OFFSET {$offset}";
+            $stmt = $this->externalPdo->prepare($pagedQuery);
+            $stmt->execute($selectParams);
             $products = $stmt->fetchAll();
 
             if (empty($products)) {
@@ -378,21 +368,16 @@ class ImportFromExternalDb extends Command
         }
     }
 
-    /**
-     * Импорт одного товара
-     */
     protected function importSingleProduct(Workspace $workspace, array $product): void
     {
         $sku = $product['article'] ?? null;
         $name = $product['title'] ?? "Товар #{$product['id']}";
 
-        // Проверяем существование по SKU
         $existing = null;
         if ($sku) {
             $existing = $workspace->products()->where('sku', $sku)->first();
         }
 
-        // Маппинг полей
         $data = [
             'workspace_id' => $workspace->id,
             'name' => $name,
@@ -404,14 +389,12 @@ class ImportFromExternalDb extends Command
             'in_stop_list' => !empty($product['in_stop_list_at']),
         ];
 
-        // Изображения
         if (!$this->option('skip-images') && !empty($product['images'])) {
             $data['images'] = $this->parseImages($product['images']);
         } else {
             $data['images'] = [];
         }
 
-        // Размеры
         if (!empty($product['dimension'])) {
             $data['dimensions'] = $this->parseJson($product['dimension']);
         }
@@ -423,34 +406,26 @@ class ImportFromExternalDb extends Command
         }
 
         if ($existing && $this->option('update-existing')) {
-            // Обновляем существующий
             $existing->update($data);
             $this->updatedProducts++;
             $productId = $existing->id;
         } elseif ($existing) {
-            // Пропускаем существующий
             $this->skippedProducts++;
             $productId = $existing->id;
         } else {
-            // Создаём новый
             $newProduct = Product::create($data);
             $this->importedProducts++;
             $productId = $newProduct->id;
         }
 
-        // Связываем с категориями
         $this->attachCategories($productId, $product['id']);
     }
 
-    /**
-     * Нормализация старой цены
-     */
     protected function normalizeOldPrice($oldPrice, $currentPrice): ?float
     {
         $oldPrice = (float) $oldPrice;
         $currentPrice = (float) $currentPrice;
 
-        // Если old_price = 0 или меньше current_price — возвращаем null
         if ($oldPrice <= 0 || $oldPrice <= $currentPrice) {
             return null;
         }
@@ -458,20 +433,15 @@ class ImportFromExternalDb extends Command
         return $oldPrice;
     }
 
-    /**
-     * Парсинг изображений
-     */
     protected function parseImages($imagesData): array
     {
         if (empty($imagesData)) {
             return [];
         }
 
-        // Пытаемся распарсить JSON
         $decoded = json_decode($imagesData, true);
 
         if (json_last_error() === JSON_ERROR_NONE) {
-            // Если это массив URL
             if (is_array($decoded)) {
                 return collect($decoded)->map(function ($img) {
                     if (is_string($img)) {
@@ -488,7 +458,6 @@ class ImportFromExternalDb extends Command
             }
         }
 
-        // Если это просто URL (строка)
         if (is_string($imagesData) && filter_var($imagesData, FILTER_VALIDATE_URL)) {
             return [['url' => $imagesData, 'name' => basename($imagesData)]];
         }
@@ -496,9 +465,6 @@ class ImportFromExternalDb extends Command
         return [];
     }
 
-    /**
-     * Парсинг JSON
-     */
     protected function parseJson($data)
     {
         if (empty($data)) {
@@ -509,9 +475,6 @@ class ImportFromExternalDb extends Command
         return json_last_error() === JSON_ERROR_NONE ? $decoded : null;
     }
 
-    /**
-     * Привязка товара к категориям
-     */
     protected function attachCategories(int $productId, int $externalProductId): void
     {
         if (empty($this->categoryMap)) {
@@ -521,13 +484,12 @@ class ImportFromExternalDb extends Command
         $pivotTable = $this->tablePrefix . $this->option('pivot-table');
 
         try {
-            // Проверяем существование pivot-таблицы
-            $stmt = $this->externalPdo->query("SHOW TABLES LIKE '{$pivotTable}'");
+            $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
+            $stmt->execute([$pivotTable]);
             if ($stmt->rowCount() === 0) {
                 return;
             }
 
-            // Получаем категории товара
             $stmt = $this->externalPdo->prepare(
                 "SELECT category_id FROM {$pivotTable} WHERE product_id = ?"
             );
@@ -538,7 +500,6 @@ class ImportFromExternalDb extends Command
                 return;
             }
 
-            // Маппим старые ID на новые
             $newCategoryIds = [];
             foreach ($categoryIds as $oldCatId) {
                 if (isset($this->categoryMap[$oldCatId]) && $this->categoryMap[$oldCatId]) {
@@ -554,14 +515,10 @@ class ImportFromExternalDb extends Command
             }
 
         } catch (PDOException $e) {
-            // Не критично — просто логируем
             $this->errors[] = "Привязка категорий товара #{$productId}: {$e->getMessage()}";
         }
     }
 
-    /**
-     * Отчёт о результатах
-     */
     protected function showReport(float $startTime): void
     {
         $duration = round(microtime(true) - $startTime, 2);
@@ -585,7 +542,6 @@ class ImportFromExternalDb extends Command
         }
         $this->info('═══════════════════════════════════════');
 
-        // Сохраняем ошибки в лог
         if (!empty($this->errors)) {
             $this->newLine();
             $this->warn('⚠️  Первые 10 ошибок:');
