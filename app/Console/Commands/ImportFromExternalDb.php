@@ -30,7 +30,9 @@ class ImportFromExternalDb extends Command
                             {--skip-categories : Не импортировать категории}
                             {--dry-run : Только показать что будет импортировано, без записи в БД}
                             {--batch-size=100 : Размер батча для импорта}
-                            {--timeout=30 : Timeout подключения в секундах}';
+                            {--timeout=30 : Timeout подключения в секундах}
+                            {--error-log-file= : Путь к файлу для лога ошибок (по умолчанию storage/logs/import_errors_{timestamp}.json)}
+                            {--include-trace : Включать полный трейс ошибок в лог}';
 
     protected $description = 'Импорт товаров и категорий из внешней базы данных';
 
@@ -43,6 +45,7 @@ class ImportFromExternalDb extends Command
     protected int $importedCategories = 0;
     protected array $categoryMap = []; // old_id => new_id
     protected array $errors = [];
+    protected string $errorLogFile = '';
 
     public function handle(): int
     {
@@ -71,6 +74,9 @@ class ImportFromExternalDb extends Command
             $this->line('');
         }
 
+        // Инициализация файла лога ошибок
+        $this->initErrorLog();
+
         $startTime = microtime(true);
 
         try {
@@ -85,6 +91,16 @@ class ImportFromExternalDb extends Command
         } catch (\Throwable $e) {
             $this->newLine();
             $this->error("❌ Критическая ошибка: {$e->getMessage()}");
+
+            // Логируем критическую ошибку
+            $this->addError([
+                'type' => 'critical',
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
+            ]);
+
             Log::error('External DB import failed', [
                 'workspace' => $workspace->uuid,
                 'error' => $e->getMessage(),
@@ -93,9 +109,67 @@ class ImportFromExternalDb extends Command
             return self::FAILURE;
         } finally {
             $this->disconnect();
+            $this->saveErrorLog();
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Инициализация файла лога ошибок
+     */
+    protected function initErrorLog(): void
+    {
+        $logFile = $this->option('error-log-file');
+
+        if (empty($logFile)) {
+            $timestamp = date('Y-m-d_H-i-s');
+            $logFile = storage_path("logs/import_errors_{$timestamp}.json");
+        }
+
+        $this->errorLogFile = $logFile;
+
+        // Создаём директорию если её нет
+        $dir = dirname($logFile);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $this->info("📝 Лог ошибок будет сохранён в: {$logFile}");
+        $this->line('');
+    }
+
+    /**
+     * Добавление ошибки в массив
+     */
+    protected function addError(array $errorData): void
+    {
+        $errorData['timestamp'] = date('Y-m-d H:i:s');
+        $this->errors[] = $errorData;
+    }
+
+    /**
+     * Сохранение лога ошибок в файл
+     */
+    protected function saveErrorLog(): void
+    {
+        if (empty($this->errors)) {
+            return;
+        }
+
+        $logData = [
+            'import_info' => [
+                'workspace_uuid' => $this->option('workspace'),
+                'database' => $this->option('database'),
+                'host' => $this->option('host'),
+                'timestamp' => date('Y-m-d H:i:s'),
+                'total_errors' => count($this->errors),
+            ],
+            'errors' => $this->errors,
+        ];
+
+        $json = json_encode($logData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        file_put_contents($this->errorLogFile, $json);
     }
 
     protected function validateParams(): bool
@@ -175,14 +249,12 @@ class ImportFromExternalDb extends Command
 
         $this->info("📂 Импорт категорий из таблицы '{$table}'...");
 
-        // Проверка существования таблицы
         $stmtCheck = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
         $stmtCheck->execute([$table]);
         if ($stmtCheck->rowCount() === 0) {
             $this->error("❌ Таблица '{$table}' не найдена во внешней БД.");
             $this->line("   Проверьте правильность имени таблицы (параметр --categories-table) или укажите верный --table-prefix.");
 
-            // Пытаемся подсказать похожие таблицы
             $stmtAll = $this->externalPdo->query("SHOW TABLES");
             $allTables = $stmtAll->fetchAll(PDO::FETCH_COLUMN);
             $similar = array_filter($allTables, fn($t) => stripos($t, 'categ') !== false || stripos($t, 'cat') !== false);
@@ -250,7 +322,15 @@ class ImportFromExternalDb extends Command
                     $this->importedCategories++;
 
                 } catch (\Throwable $e) {
-                    $this->errors[] = "Категория '{$cat['title']}': {$e->getMessage()}";
+                    $this->addError([
+                        'type' => 'category_import',
+                        'category_id' => $cat['id'] ?? null,
+                        'category_title' => $cat['title'] ?? 'Unknown',
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
+                    ]);
                 }
 
                 if (!$this->option('dry-run')) {
@@ -268,6 +348,13 @@ class ImportFromExternalDb extends Command
 
         } catch (PDOException $e) {
             $this->error("❌ Ошибка чтения категорий: {$e->getMessage()}");
+            $this->addError([
+                'type' => 'category_query',
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
+            ]);
         }
     }
 
@@ -325,7 +412,6 @@ class ImportFromExternalDb extends Command
         $selectQuery .= ' ORDER BY id ASC';
 
         while ($offset < $totalCount) {
-            // LIMIT и OFFSET подставляем напрямую числами, чтобы избежать ошибки 1064 Syntax Error (PDO связывает их как строки)
             $pagedQuery = $selectQuery . " LIMIT {$batchSize} OFFSET {$offset}";
             $stmt = $this->externalPdo->prepare($pagedQuery);
             $stmt->execute($selectParams);
@@ -340,7 +426,16 @@ class ImportFromExternalDb extends Command
                     $this->importSingleProduct($workspace, $product);
                 } catch (\Throwable $e) {
                     $this->failedProducts++;
-                    $this->errors[] = "Товар ID {$product['id']} ({$product['title']}): {$e->getMessage()}";
+                    $this->addError([
+                        'type' => 'product_import',
+                        'product_id' => $product['id'] ?? null,
+                        'product_title' => $product['title'] ?? 'Unknown',
+                        'product_sku' => $product['article'] ?? null,
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
+                    ]);
                 }
 
                 if (!$this->option('dry-run')) {
@@ -515,7 +610,15 @@ class ImportFromExternalDb extends Command
             }
 
         } catch (PDOException $e) {
-            $this->errors[] = "Привязка категорий товара #{$productId}: {$e->getMessage()}";
+            $this->addError([
+                'type' => 'category_attach',
+                'product_id' => $productId,
+                'external_product_id' => $externalProductId,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $this->option('include-trace') ? $e->getTraceAsString() : null,
+            ]);
         }
     }
 
@@ -545,17 +648,30 @@ class ImportFromExternalDb extends Command
         if (!empty($this->errors)) {
             $this->newLine();
             $this->warn('⚠️  Первые 10 ошибок:');
+
             foreach (array_slice($this->errors, 0, 10) as $error) {
-                $this->line("   • {$error}");
+                $type = $error['type'] ?? 'unknown';
+                $message = $error['message'] ?? 'Unknown error';
+
+                if ($type === 'product_import') {
+                    $this->line("   • [{$type}] Товар #{$error['product_id']} ({$error['product_title']}): {$message}");
+                } elseif ($type === 'category_import') {
+                    $this->line("   • [{$type}] Категория #{$error['category_id']} ({$error['category_title']}): {$message}");
+                } else {
+                    $this->line("   • [{$type}] {$message}");
+                }
             }
 
             if (count($this->errors) > 10) {
                 $this->line('   ... и ещё ' . (count($this->errors) - 10) . ' ошибок');
             }
 
+            $this->newLine();
+            $this->info("📝 Полный лог ошибок сохранён в: {$this->errorLogFile}");
+
             Log::warning('External DB import completed with errors', [
                 'errors_count' => count($this->errors),
-                'errors' => $this->errors,
+                'error_log_file' => $this->errorLogFile,
             ]);
         }
 
