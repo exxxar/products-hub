@@ -6,6 +6,8 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Workspace;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use PDO;
 use PDOException;
@@ -20,20 +22,21 @@ class ImportFromExternalDb extends Command
                             {--database= : Имя внешней БД (обязательно)}
                             {--username=root : Пользователь внешней БД}
                             {--password= : Пароль внешней БД}
-                            {--table-prefix= : Префикс таблиц}
+                            {--table-prefix= : Префикс таблиц внешней БД}
                             {--products-table=products : Имя таблицы товаров}
                             {--categories-table=categories : Имя таблицы категорий}
-                            {--pivot-table=product_category : Имя pivot-таблицы}
+                            {--pivot-table=product_category : Имя pivot-таблицы во внешней БД}
                             {--bot-id= : Фильтр по bot_id}
                             {--sub-shop-id= : Фильтр по sub_shop_id}
-                            {--update-existing : Обновлять существующие товары по SKU}
-                            {--skip-images : Не импортировать изображения}
+                            {--update-existing : Обновлять существующие товары по SKU или external_id}
+                            {--skip-images : Не скачивать и не импортировать изображения}
                             {--skip-categories : Не импортировать категории}
-                            {--dry-run : Только показать что будет импортировано}
+                            {--delete-missing : ⚠️ ПОЛНАЯ ОЧИСТКА: удалить ВСЕ товары в workspace перед импортом}
+                            {--dry-run : Только показать что будет сделано, без записи в БД}
                             {--batch-size=100 : Размер батча для импорта}
                             {--timeout=30 : Timeout подключения в секундах}';
 
-    protected $description = 'Импорт товаров и категорий из внешней базы данных';
+    protected $description = 'Полный импорт товаров и категорий с возможностью полной очистки workspace перед импортом и загрузкой изображений';
 
     protected ?PDO $externalPdo = null;
     protected string $tablePrefix = '';
@@ -41,19 +44,25 @@ class ImportFromExternalDb extends Command
     protected int $updatedProducts = 0;
     protected int $skippedProducts = 0;
     protected int $failedProducts = 0;
+    protected int $wipedProducts = 0;
     protected int $importedCategories = 0;
     protected array $categoryMap = [];
+    protected array $importedExternalIds = [];
+
     protected string $errorLogPath;
+    protected string $activityLogPath;
     protected int $consoleErrorCount = 0;
 
     public function handle(): int
     {
-        $this->info('🚀 Импорт из внешней базы данных');
+        $this->info('🚀 Запуск полного импорта из внешней базы данных');
         $this->line('');
 
-        $this->errorLogPath = storage_path('logs/import_errors_' . date('Y-m-d') . '.log');
-        file_put_contents($this->errorLogPath, "\n" . str_repeat('=', 80) . "\n", FILE_APPEND);
-        file_put_contents($this->errorLogPath, "Начало импорта: " . now()->toDateTimeString() . "\n", FILE_APPEND);
+        $date = date('Y-m-d');
+        $this->errorLogPath = storage_path("logs/import_errors_{$date}.log");
+        $this->activityLogPath = storage_path("logs/import_activity_{$date}.log");
+
+        $this->logActivity('=== НАЧАЛО ИМПОРТА ===');
 
         if (!$this->validateParams()) return self::FAILURE;
         if (!$this->connectToExternalDb()) return self::FAILURE;
@@ -72,53 +81,91 @@ class ImportFromExternalDb extends Command
             $this->line('');
         }
 
+        // 🧹 ПОЛНАЯ ОЧИСТКА ТОВАРОВ, ЕСЛИ УКАЗАН ФЛАГ
+        if ($this->option('delete-missing')) {
+            $this->wipeWorkspaceProducts($workspace);
+        }
+
         $startTime = microtime(true);
 
         try {
             if (!$this->option('skip-categories')) {
                 $this->importCategories($workspace);
             }
+
             $this->importProducts($workspace);
+
             $this->showReport($startTime);
         } catch (Throwable $e) {
             $this->newLine();
             $this->error("❌ КРИТИЧЕСКАЯ ОШИБКА: {$e->getMessage()}");
-            $this->error("📁 Файл: {$e->getFile()} (строка {$e->getLine()})");
-            $this->error("📜 Stack Trace:");
-            $this->line($e->getTraceAsString());
-
             $this->logError('КРИТИЧЕСКАЯ ОШИБКА ИМПОРТА', $e);
             return self::FAILURE;
         } finally {
             $this->disconnect();
+            $this->logActivity('=== ИМПОРТ ЗАВЕРШЕН ===');
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * Выводит полный стек в консоль (для первых 3 ошибок) и пишет в файл
+     * Полная очистка всех товаров в указанном workspace
      */
+    protected function wipeWorkspaceProducts(Workspace $workspace): void
+    {
+        $this->warn('⚠️  Активирован режим ПОЛНОЙ ОЧИСТКИ товаров для этого workspace!');
+
+        if ($this->option('dry-run')) {
+            $count = Product::where('workspace_id', $workspace->id)->count();
+            $this->line("   [DRY-RUN] Было бы удалено товаров: {$count}");
+            $this->logActivity("[DRY-RUN ОЧИСТКА] Было бы удалено товаров: {$count}");
+            return;
+        }
+
+        $this->info('🧹 Удаление существующих товаров и их связей...');
+
+        // 1. Получаем ID всех товаров воркспейса
+        $productIds = Product::where('workspace_id', $workspace->id)->pluck('id')->toArray();
+
+        if (!empty($productIds)) {
+            // 2. Чистим локальную pivot-таблицу связей с категориями (чтобы не было висячих записей)
+            $deletedPivots = DB::table('product_categories')->whereIn('product_id', $productIds)->delete();
+
+            // 3. Удаляем сами товары (сработает SoftDelete, если он включен в модели)
+            $this->wipedProducts = Product::where('workspace_id', $workspace->id)->delete();
+
+            $this->info("✅ Удалено связей в категориях: {$deletedPivots}");
+            $this->info("✅ Удалено товаров: {$this->wipedProducts}");
+            $this->logActivity("[ОЧИСТКА] Удалено связей: {$deletedPivots}, Удалено товаров: {$this->wipedProducts}");
+        } else {
+            $this->info('✅ Товаров для удаления не найдено (workspace уже пуст).');
+        }
+        $this->line('');
+    }
+
+    protected function logActivity(string $message): void
+    {
+        file_put_contents($this->activityLogPath, '[' . now()->toDateTimeString() . '] ' . $message . PHP_EOL, FILE_APPEND);
+    }
+
     protected function logError(string $context, Throwable $e): void
     {
         $this->consoleErrorCount++;
 
-        // Выводим полный стек в консоль для первых 3 ошибок, чтобы было видно сразу
         if ($this->consoleErrorCount <= 3) {
             $this->newLine();
             $this->error("❌ ОШИБКА #{$this->consoleErrorCount}: {$context}");
             $this->error("💬 Сообщение: {$e->getMessage()}");
             $this->error("📁 Файл: {$e->getFile()} (строка {$e->getLine()})");
-            $this->error("📜 Stack Trace:");
-            $this->line($e->getTraceAsString());
+            $this->error("📜 Stack Trace:\n" . $e->getTraceAsString());
             $this->newLine();
         }
 
-        // Также сохраняем в файл для полного отчета
         $errorMessage = "[{$context}]\n";
         $errorMessage .= "Сообщение: " . $e->getMessage() . "\n";
         $errorMessage .= "Файл: " . $e->getFile() . " (строка {$e->getLine()})\n";
-        $errorMessage .= "Трейс (Stack Trace):\n" . $e->getTraceAsString() . "\n";
+        $errorMessage .= "Трейс:\n" . $e->getTraceAsString() . "\n";
         $errorMessage .= str_repeat('-', 80) . "\n";
 
         file_put_contents($this->errorLogPath, $errorMessage, FILE_APPEND);
@@ -225,7 +272,8 @@ class ImportFromExternalDb extends Command
                     }
                 } catch (Throwable $e) {
                     $this->failedProducts++;
-                    $this->logError("Импорт категории ID: {$cat['id']} ({$cat['title']})", $e);
+                    $this->logActivity("[ОШИБКА] Внешний ID: {$cat['id']} | Название: {$cat['title']} | Ошибка: {$e->getMessage()}");
+                    $this->logError("Импорт категории ID: {$cat['id']}", $e);
                 }
                 if ($bar) $bar->advance();
             }
@@ -284,7 +332,10 @@ class ImportFromExternalDb extends Command
                     $this->importSingleProduct($workspace, $product);
                 } catch (Throwable $e) {
                     $this->failedProducts++;
-                    $this->logError("Импорт товара ID: {$product['id']} ({$product['title']})", $e);
+                    $extId = $product['id'] ?? 'unknown';
+                    $name = $product['title'] ?? 'unknown';
+                    $this->logActivity("[ОШИБКА] Внешний ID: {$extId} | Название: {$name} | Ошибка: {$e->getMessage()}");
+                    $this->logError("Импорт товара ID: {$extId} ({$name})", $e);
                 }
                 if ($bar) $bar->advance();
             }
@@ -292,28 +343,33 @@ class ImportFromExternalDb extends Command
         }
 
         if ($bar) { $bar->finish(); $this->newLine(2); }
-
-        $this->info("✅ Импортировано товаров: {$this->importedProducts}");
-        if ($this->updatedProducts > 0) $this->info("🔄 Обновлено товаров: {$this->updatedProducts}");
-        if ($this->skippedProducts > 0) $this->warn("⏭️ Пропущено товаров: {$this->skippedProducts}");
-        if ($this->failedProducts > 0) $this->error("❌ Ошибок при импорте: {$this->failedProducts}");
     }
 
     protected function importSingleProduct(Workspace $workspace, array $product): void
     {
+        $externalId = $product['id'];
         $sku = $product['article'] ?? null;
-        $name = $product['title'] ?? "Товар #{$product['id']}";
+        $name = $product['title'] ?? "Товар #{$externalId}";
 
-        // Используем прямой запрос, чтобы избежать проблем с отношениями моделей
+        $imageUrl = $this->extractFirstImageUrl($product['images'] ?? null);
+        $this->importedExternalIds[] = $externalId;
+
         $existing = null;
-        if ($sku) {
-            $existing = Product::where('workspace_id', $workspace->id)->where('sku', $sku)->first();
+        if ($this->option('update-existing')) {
+            if ($sku) {
+                $existing = Product::where('workspace_id', $workspace->id)->where('sku', $sku)->first();
+            }
+            if (!$existing && $externalId) {
+                $existing = Product::where('workspace_id', $workspace->id)->where('external_id', $externalId)->first();
+            }
         }
 
         $data = [
             'workspace_id' => $workspace->id,
             'name' => $name,
             'sku' => $sku,
+            'external_id' => $externalId,
+            'external_source' => 'external_db_' . $this->option('database'),
             'price' => (float) ($product['current_price'] ?? 0),
             'old_price' => $this->normalizeOldPrice($product['old_price'] ?? null, $product['current_price'] ?? 0),
             'description' => $product['description'] ?? null,
@@ -322,7 +378,7 @@ class ImportFromExternalDb extends Command
         ];
 
         if (!$this->option('skip-images') && !empty($product['images'])) {
-            $data['images'] = $this->parseImages($product['images']);
+            $data['images'] = $this->processAndDownloadImages($product['images'], $workspace->id, $existing ? $existing->id : null);
         } else {
             $data['images'] = [];
         }
@@ -332,25 +388,79 @@ class ImportFromExternalDb extends Command
         }
 
         if ($this->option('dry-run')) {
-            $this->line("   [DRY] Товар: {$name} (SKU: {$sku})");
+            $this->line("   [DRY] Товар: {$name} (Внешний ID: {$externalId}, SKU: {$sku})");
+            $this->logActivity("[DRY-RUN] Внешний ID: {$externalId} | Название: {$name} | Картинка: {$imageUrl} | Статус: Предпросмотр");
             $this->importedProducts++;
             return;
         }
 
-        if ($existing && $this->option('update-existing')) {
+        $action = 'Создан';
+        if ($existing) {
             $existing->update($data);
-            $this->updatedProducts++;
             $productId = $existing->id;
-        } elseif ($existing) {
-            $this->skippedProducts++;
-            $productId = $existing->id;
+            $action = $this->option('update-existing') ? 'Обновлен' : 'Пропущен (существует)';
+            if ($action === 'Обновлен') {
+                $this->updatedProducts++;
+            } else {
+                $this->skippedProducts++;
+            }
         } else {
             $newProduct = Product::create($data);
-            $this->importedProducts++;
             $productId = $newProduct->id;
+            $this->importedProducts++;
         }
 
-        $this->attachCategories($productId, $product['id']);
+        $this->logActivity("[{$action}] Внешний ID: {$externalId} | Название: {$name} | Картинка: {$imageUrl} | Локальный ID: {$productId}");
+
+        $this->attachCategories($productId, $externalId);
+    }
+
+    protected function processAndDownloadImages($imagesData, int $workspaceId, ?int $productId): array
+    {
+        if (empty($imagesData)) return [];
+
+        $parsed = $this->parseImages($imagesData);
+        if (empty($parsed)) return [];
+
+        $localImages = [];
+        $targetProductId = $productId ?? 'temp_' . uniqid();
+
+        foreach ($parsed as $index => $imgData) {
+            $url = $imgData['url'] ?? null;
+            if (!$url || !filter_var($url, FILTER_VALIDATE_URL)) continue;
+
+            try {
+                $response = Http::timeout(15)->get($url);
+                if ($response->successful()) {
+                    $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+                    $filename = 'img_' . $targetProductId . '_' . $index . '_' . time() . '.' . $extension;
+                    $directory = storage_path("app/public/products/{$workspaceId}/{$targetProductId}");
+
+                    if (!is_dir($directory)) {
+                        mkdir($directory, 0755, true);
+                    }
+
+                    $filePath = "{$directory}/{$filename}";
+                    file_put_contents($filePath, $response->body());
+
+                    $localImages[] = [
+                        'url' => "storage/products/{$workspaceId}/{$targetProductId}/{$filename}",
+                        'name' => $imgData['name'] ?? basename($url)
+                    ];
+                }
+            } catch (\Exception $e) {
+                $localImages[] = $imgData; // Оставляем оригинальный URL при ошибке скачивания
+            }
+        }
+
+        return $localImages;
+    }
+
+    protected function extractFirstImageUrl($imagesData): string
+    {
+        if (empty($imagesData)) return 'Нет';
+        $parsed = $this->parseImages($imagesData);
+        return $parsed[0]['url'] ?? 'Не удалось извлечь';
     }
 
     protected function normalizeOldPrice($oldPrice, $currentPrice): ?float
@@ -420,21 +530,32 @@ class ImportFromExternalDb extends Command
     {
         $duration = round(microtime(true) - $startTime, 2);
         $this->newLine();
-        $this->info('═══════════════════════════════════════');
+        $this->info('══════════════════════════════════════════════');
         $this->info('📊 ОТЧЁТ ОБ ИМПОРТЕ');
-        $this->info('═══════════════════════════════════════');
-        $this->line("   ⏱  Время: {$duration} сек");
-        $this->line("   📂 Категорий: {$this->importedCategories}");
+        $this->info('══════════════════════════════════════════════');
+        $this->line("   ⏱  Время выполнения: {$duration} сек");
+        if ($this->wipedProducts > 0) {
+            $this->error("   🗑️ УДАЛЕНО старых товаров (очистка): {$this->wipedProducts}");
+        }
+        $this->line("   📂 Категорий создано/найдено: {$this->importedCategories}");
         $this->line("   📦 Товаров создано: {$this->importedProducts}");
         if ($this->updatedProducts > 0) $this->line("   🔄 Товаров обновлено: {$this->updatedProducts}");
         if ($this->skippedProducts > 0) $this->line("   ⏭️ Товаров пропущено: {$this->skippedProducts}");
-        if ($this->failedProducts > 0) $this->line("   ❌ Ошибок: {$this->failedProducts}");
-        $this->info('═══════════════════════════════════════');
+        if ($this->failedProducts > 0) $this->error("   ❌ Ошибок: {$this->failedProducts}");
+        $this->info('══════════════════════════════════════════════');
 
         if ($this->failedProducts > 0) {
             $this->newLine();
-            $this->warn("⚠️ Произошли ошибки. Полный стек первых 3 ошибок выведен выше в консоль.");
-            $this->warn("📄 Все ошибки также сохранены в: " . $this->errorLogPath);
+            $this->warn("⚠️ Произошли ошибки. Полный стек первых 3 ошибок выведен выше.");
+        }
+
+        $this->newLine();
+        $this->info("📝 Детальный лог всех операций сохранен в:");
+        $this->line("   " . $this->activityLogPath);
+
+        if ($this->failedProducts > 0) {
+            $this->warn("📝 Лог ошибок сохранен в:");
+            $this->line("   " . $this->errorLogPath);
         }
         $this->newLine();
     }
