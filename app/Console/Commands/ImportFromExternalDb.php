@@ -514,29 +514,44 @@ class ImportFromExternalDb extends Command
 
     protected function attachCategories(int $productId, int $externalProductId): void
     {
-        if (empty($this->categoryMap)) return;
+        if (empty($this->categoryMap)) {
+            return;
+        }
 
         $pivotTable = $this->tablePrefix . $this->option('pivot-table');
+
         try {
+            // 1. Проверяем существование pivot-таблицы
             $stmt = $this->externalPdo->prepare("SHOW TABLES LIKE ?");
             $stmt->execute([$pivotTable]);
-            if ($stmt->rowCount() === 0) return;
+            if ($stmt->rowCount() === 0) {
+                $this->logActivity("[ПРЕДУПРЕЖДЕНИЕ] Товар ID {$productId}: Pivot-таблица '{$pivotTable}' не найдена.");
+                return;
+            }
 
-            $stmt = $this->externalPdo->prepare("SELECT category_id FROM {$pivotTable} WHERE product_id = ?");
+            // 2. ✅ ИСПРАВЛЕНО: используем правильное имя колонки product_category_id
+            $stmt = $this->externalPdo->prepare("SELECT product_category_id FROM {$pivotTable} WHERE product_id = ?");
             $stmt->execute([$externalProductId]);
-            $categoryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $externalCategoryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
+            if (empty($externalCategoryIds)) {
+                return; // У товара просто нет категорий, это нормально
+            }
+
+            // 3. Преобразуем старые ID категорий в новые (локальные)
             $newCategoryIds = [];
-            foreach ($categoryIds as $oldCatId) {
+            foreach ($externalCategoryIds as $oldCatId) {
                 if (isset($this->categoryMap[$oldCatId]) && $this->categoryMap[$oldCatId]) {
                     $newCategoryIds[] = $this->categoryMap[$oldCatId];
                 }
             }
 
+            // 4. Сохраняем связи в локальную БД
             if (!empty($newCategoryIds)) {
                 $product = Product::find($productId);
                 if ($product) {
                     $product->categories()->syncWithoutDetaching($newCategoryIds);
+                    $this->logActivity("[УСПЕХ] Товар ID {$productId} (Внешний ID: {$externalProductId}) привязан к локальным категориям: " . implode(', ', $newCategoryIds));
                 }
             }
         } catch (Throwable $e) {
