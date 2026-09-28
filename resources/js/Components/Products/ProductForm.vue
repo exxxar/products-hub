@@ -1,5 +1,5 @@
 <template>
-    <div v-if="localForm" class="product-form">
+    <div v-if="localForm" class="product-form" @keydown="handleKeydown">
         <!-- Header с кнопкой заполнения -->
         <div v-if="!isEditMode" class="form-header">
             <button type="button" class="btn-fill-example" @click="fillWithTestData">
@@ -351,6 +351,11 @@
             </button>
         </div>
 
+        <!-- ✅ Подсказка о горячих клавишах -->
+        <div class="form-shortcut-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Совет: нажмите <kbd>Ctrl</kbd> + <kbd>S</kbd> (или <kbd>⌘</kbd> + <kbd>S</kbd>) либо <kbd>Enter</kbd> для быстрого сохранения</span>
+        </div>
         <!-- Модалки подтверждения -->
         <ConfirmModal v-model:show="showDeleteGroupConfirm" title="Удалить группу?" description="Все ингредиенты этой группы будут удалены." warning="Это действие нельзя отменить." type="danger" confirm-text="Удалить" @accept="confirmRemoveGroup" />
         <ConfirmModal v-model:show="showDeleteIngredientConfirm" title="Удалить ингредиент?" :description="`Ингредиент '${ingredientToDelete?.name}' будет удален.`" type="danger" confirm-text="Удалить" @accept="confirmRemoveIngredient" />
@@ -470,6 +475,17 @@ export default {
     mounted() { this.updateTabCounts() },
 
     methods: {
+        handleKeydown(event) {
+            const isCtrlS = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
+            const tagName = event.target.tagName?.toUpperCase();
+            // Enter срабатывает, если фокус не в многострочном поле и не на кнопке (чтобы не дублировать клик)
+            const isEnter = event.key === 'Enter' && tagName !== 'TEXTAREA' && tagName !== 'BUTTON';
+
+            if (isCtrlS || isEnter) {
+                event.preventDefault(); // Предотвращаем стандартное поведение браузера
+                this.saveForm();
+            }
+        },
         // === Группы ингредиентов ===
         addGroup() {
             if (!this.newGroupName.trim()) return;
@@ -930,4 +946,29 @@ export default {
 @media (max-width: 576px) {
     .image-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ✅ Стили для подсказки о горячих клавишах */
+.form-shortcut-hint {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: #6c757d;
+}
+.form-shortcut-hint kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #495057;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
 </style>
